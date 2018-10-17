@@ -1,0 +1,689 @@
+Android系统APP之SettingsProvider
+
+
+标签： 设置共享 系统设置 设置Provider Settings
+
+个人分类： Android system app
+
+
+Android系统APP之SettingsProvider
+
+    设置共享
+    系统设置
+
+    Android系统APP 之 SettingsProvider
+        前言
+        SettingsProvider概览
+            主要源码
+            数据分类
+            AndroidManifestxml配置
+        SettingsProvider的启动过程
+        封装SettingsProvider接口
+        操作SettingsProvider
+            查询数据
+            插入数据
+        第三方APP使用SettingsProvider
+        权限问题
+        总结
+
+前言
+
+SettingsProvider顾名思义是一个提供设置数据共享的Provider，SettingsProvider和Android系统其它Provider有很多不一样的地方，如：
+
+    SettingsProvider只接受int、float、string等基本类型的数据；
+    SettingsProvider由Android系统framework进行了封装，使用更加快捷方便
+    SettingsProvider的数据由键值对组成
+
+SettingsProvider有点类似Android的properties系统（Android属性系统）：SystemProperties。SystemProperties除具有SettingsProvider以上的三个特性，SettingsProvider和SystemProperties的不同点在于：
+
+    数据保存方式不同：SystemProperties的数据保存属性文件中（/system/build.prop等），开机后会被加载到system properties store；SettingsProvider的数据保存在文件/data/system/users/0/settings_***.xml和数据库settings.db中；
+    作用范围不同：SystemProperties可以实现跨进程、跨层次调用，即底层的c/c++可以调用，java层也可以调用；SettingProvider只能能在java层（APP）使用；
+    公开程度不同：SettingProvider有部分功能上层第三方APP可以使用，SystemProperties上层第三方APP不可以使用。
+
+用一句话概括SettingsProvider的作用，SettingsProvider包含全局性、系统级别的用户编好设置。在手机中有一个Settings应用，用户可以在Settings里面做很多设备的设置，这些用户偏好的设置很多就保存在SettingsProvider中。例如，飞行模式。
+
+在Android 6.0版本时，SettingsProvider被重构，Android从性能、安全等方面考虑，把SettingsProvider中原本保存在settings.db中的数据，目前全部保存在XML文件中。
+
+-----------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
+xian总结
+-----------------------------------------------------------------------------
+本文从SettingsProvider的启动过程到使用SettingsProvider查询插入数据进行了详细的过程描述，
+在SettingsProvider的启动过程中，需要创建数据库，把默认设置项值写入到数据库，把数据中的所有数据，迁移到xml文件中。
+
+SettingsProvider的查询和插入结合章节“SettingsProvider的启动过程”中的层次关系图，一目了然。
+
+对于第三方APP只有读没有写的能力。
+由于SettingsProvider的特性，虽然SettingsProvider是跨进程通信，但是由于从多个层次都做了缓存，且SettingsProvider中的同步协作机制，
+只要时间都是花费在Binder通信上面，但是Binder通信是一种快速的跨进程通信的过程，所以在主线程（UI线程）中可以直
+接使用SettingsProvider查阅插入数据而不会导致UI阻塞导致ANR（应用程序无响应）。
+
+另外，由于SettingsProvider的特性和限制，SettingsProvider不予写入过多的数据，最好只是系统设置相关的设置项才保存到SettingsProvider中，
+同时也不适合写入过大的数据，否则将会严重影响SettingsProvider的性能。
+
+-----------------------------------------------------------------------------------------------------
+SettingsProvider概览
+
+主要源码
+SettingsProvider的代码数量不多，主要包含如下的java文件：
+
+frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/DatabaseHelper.java
+frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/GenerationRegistry.java
+frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsHelper.java
+frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java
+frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsState.java
+frameworks/base/core/java/android/provider/Settings.java
+
+
+数据分类
+SettingsProvider对数据进行了分类，分别是Global、System、Secure三种类型，它们的区别如下：
+
+    Global：所有的偏好设置对系统的所有用户公开，第三方APP有读没有写的权限；
+    System：包含各种各样的用户偏好系统设置；
+    Secure：安全性的用户偏好系统设置，第三方APP有读没有写的权限。
+
+AndroidManifest.xml配置
+
+SettingsProvider的AndroidManifest.xml文件对应用和ContentProvider的配置如下：
+
+<manifest ......
+        android:sharedUserId="android.uid.system">
+
+    <application android:allowClearUserData="false"
+                 android:label="@string/app_label"
+                 android:process="system"
+                 ......
+                 android:directBootAware="true">
+
+        <provider android:name="SettingsProvider"
+                  android:authorities="settings"
+                  android:multiprocess="false"
+                  android:exported="true"
+                  android:singleUser="true"
+                  android:initOrder="100" />
+    </application>
+</manifest>
+
+这些代码定义在文件frameworks/base/packages/SettingsProvider/AndroidManifest.xml中。
+
+上面的Manifest配置由sharedUserId可知，SettingsProvider运行在系统进程中，定义的ContentProvider实现类是SettingsProvider，Uri凭证是settings。
+SettingsProvider的启动过程
+
+启动SettingsProvider即运行SettingsProvider，和打开一个Activity类似，会回调ContentProvider的生命周期方法，首先的，会调用OnCreate()方法，如下：
+
+public boolean onCreate() {
+    synchronized (mLock) {
+        ......
+        mHandlerThread = new HandlerThread(LOG_TAG,
+                Process.THREAD_PRIORITY_BACKGROUND);
+        mHandlerThread.start();
+        mSettingsRegistry = new SettingsRegistry();
+    }
+    registerBroadcastReceivers();
+    startWatchingUserRestrictionChanges();
+    return true;
+}
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+上面的代码首先是实例化一个HandlerThread的实例mHandlerThread，优先级为Process.THREAD_PRIORITY_BACKGROUND，下文会用到。然后实例化SettingsRegistry的实例mSettingsRegistry，这一步很重要。接着会注册广播接收器，所关心的广播包括设备用户变化以及APP卸载的广播，设备用户的变化对大多数地方使用SettingProvider的影响不是很大，本文就不再阐述和用户变化相关的内容了。但是APP卸载这里需要关注一下，当一个APP有数据保存在SettingsProvider时，APP被卸载后，被卸载的APP设置的所有数据都会被清除。回到SettingsRegistry的实例化过程，构造方法如下：
+
+public SettingsRegistry() {
+    ......
+    migrateAllLegacySettingsIfNeeded();
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+migrateAllLegacySettingsIfNeeded()方法，从命名上是迁移settings数据，迁移什么数据呢？从哪里迁移到哪里呢？继续往下看：
+
+private void migrateAllLegacySettingsIfNeeded() {
+    synchronized (mLock) {
+        final int key = makeKey(SETTINGS_TYPE_GLOBAL, UserHandle.USER_SYSTEM);
+        File globalFile = getSettingsFile(key);
+        if (globalFile.exists()) {
+            return;
+        }
+        ......
+        DatabaseHelper dbHelper = new DatabaseHelper(getContext(), userId);
+        SQLiteDatabase database = dbHelper.getWritableDatabase();
+        migrateLegacySettingsForUserLocked(dbHelper, database, userId);
+        ......
+    }
+}
+
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+上面的代码首先是调用了makeKey()方法，所谓makeKey()就是和上文中的数据分类小章节中提到的System、Global和Secure三种key。然后调用getSettingsFile()方法获取到一个File对象的实例，如下：
+
+private File getSettingsFile(int key) {
+    if (isGlobalSettingsKey(key)) {
+        final int userId = getUserIdFromKey(key);
+        return new File(Environment.getUserSystemDirectory(userId),
+                SETTINGS_FILE_GLOBAL);
+    } else if (isSystemSettingsKey(key)) {
+        final int userId = getUserIdFromKey(key);
+        return new File(Environment.getUserSystemDirectory(userId),
+                SETTINGS_FILE_SYSTEM);
+    } else if (isSecureSettingsKey(key)) {
+        final int userId = getUserIdFromKey(key);
+        return new File(Environment.getUserSystemDirectory(userId),
+                SETTINGS_FILE_SECURE);
+    } else {
+        throw new IllegalArgumentException("Invalid settings key:" + key);
+    }
+}
+
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+上面的代码中对Global、System、Secure分别生成一个File对象实例，它们的File对象分别对应的文件是：
+
+    /data/system/users/0/settings_global.xml
+    /data/system/users/0/settings_system.xml
+    /data/system/users/0/settings_secure.xml
+
+那么也就是说，Global类型的数据保存在文件settings_global.xml中，System类型的数据保存在文件settings_system.xml中，Secure类型的数据保存在文件settings_secure.xml中。
+
+回到上文中的migrateAllLegacySettingsIfNeeded()方法，实例化一个DatabaseHelper，DatabaseHelper是SQLiteOpenHelper的子类，然后调用getWritableDatabase()获取到指向数据库文件的SQLiteDatabase实例database。从Android SQLite的架构可知，这个过程会调用SQLiteOpenHelper的onCreate()方法，如果读者对这个过程迷惑的，可以阅读Android的API指南Android SQLite API 指南。
+
+public void onCreate(SQLiteDatabase db) {
+    db.execSQL("CREATE TABLE system (" +
+                "_id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "name TEXT UNIQUE ON CONFLICT REPLACE," +
+                "value TEXT" +
+                ");");
+    db.execSQL("CREATE INDEX systemIndex1 ON system (name);");
+
+    createSecureTable(db);
+
+    // Only create the global table for the singleton 'owner/system' user
+    if (mUserHandle == UserHandle.USER_SYSTEM) {
+        createGlobalTable(db);
+    }
+    ......
+
+    // Load initial volume levels into DB
+    loadVolumeLevels(db);
+
+    // Load inital settings values
+    loadSettings(db);
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/DatabaseHelper.java中。
+
+这个方法调用db.execSQL(“CREATE TABLE system …、createSecureTable()、createGlobalTable()分别创建System、Secure、Global三个数据库表，这个和上文中数据分类章节中的内容一致。接着调用loadVolumeLevels(db)方法，把默认的铃声音量、音乐音量、通知音量以及震动设置等等写入到数据库的System表格中。处理完后调用方法loadSettings(db)，如下：
+
+private void loadSettings(SQLiteDatabase db) {
+    loadSystemSettings(db);
+    loadSecureSettings(db);
+    // The global table only exists for the 'owner/system' user
+    if (mUserHandle == UserHandle.USER_SYSTEM) {
+        loadGlobalSettings(db);
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/DatabaseHelper.java中。
+
+loadSettings()这个方法和loadVolumeLevels()方法类似，都是加载很多默认值写入到数据库中，这些默认值很大一部分被定义在文件frameworks/base/packages/SettingsProvider/res/values/defaults.xml中，也有一些来自其它地方。总之，loadVolumeLevels()和loadSettings()的作用就是在手机第一次启动时，把手机编好设置的默认值写入到数据库settings.db中。
+
+DatabaseHelper的onCreate()方法执行完毕后，这里又回到migrateAllLegacySettingsIfNeeded()方法中，DatabaseHelper创建完毕后，继续调用migrateLegacySettingsForUserLocked()方法，如下：
+
+private void migrateLegacySettingsForUserLocked(DatabaseHelper dbHelper,
+        SQLiteDatabase database, int userId) {
+    // Move over the system settings.
+    final int systemKey = makeKey(SETTINGS_TYPE_SYSTEM, userId);
+    ensureSettingsStateLocked(systemKey);
+    SettingsState systemSettings = mSettingsStates.get(systemKey);
+    migrateLegacySettingsLocked(systemSettings, database, TABLE_SYSTEM);
+    systemSettings.persistSyncLocked();
+    ......
+    // Drop the database as now all is moved and persisted.
+    if (DROP_DATABASE_ON_MIGRATION) {
+        dbHelper.dropDatabase();
+    } else {
+        dbHelper.backupDatabase();
+    }
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+上面的代码中的每个方法都是那么重要，首先是ensureSettingsStateLocked(systemKey)，如下：
+
+private void ensureSettingsStateLocked(int key) {
+    if (mSettingsStates.get(key) == null) {
+        ......
+        SettingsState settingsState = new SettingsState(mLock, getSettingsFile(key), key,
+                maxBytesPerPackage, mHandlerThread.getLooper());
+        mSettingsStates.put(key, settingsState);
+    }
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+上面代码实例化一个SettingsState对象，这个对象指向文件/data/system/users/0/settings_system.xml，然后把settingsState放置在对象mSettingsStates中。回到migrateLegacySettingsForUserLocked()方法，ensureSettingsStateLocked()执行完毕后，调用migrateLegacySettingsLocked()方法，如下：
+
+private void migrateLegacySettingsLocked(SettingsState settingsState,
+        SQLiteDatabase database, String table) {
+    SQLiteQueryBuilder queryBuilder = new SQLiteQueryBuilder();
+    queryBuilder.setTables(table);
+
+    Cursor cursor = queryBuilder.query(database, ALL_COLUMNS,
+            null, null, null, null, null);
+
+    try {
+        ......
+
+        while (!cursor.isAfterLast()) {
+            String name = cursor.getString(nameColumnIdx);
+            String value = cursor.getString(valueColumnIdx);
+            settingsState.insertSettingLocked(name, value,
+                    SettingsState.SYSTEM_PACKAGE_NAME);
+            cursor.moveToNext();
+        }
+    } finally {
+        cursor.close();
+    }
+}
+
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+上面这个方法，查询数据库中System所有的设置，然后在while循环中把每个值的信息作为insertSettingLocked()的参数，insertSettingLocked()方法如下：
+
+public boolean insertSettingLocked(String name, String value, String packageName) {
+
+    Setting oldState = mSettings.get(name);
+    String oldValue = (oldState != null) ? oldState.value : null;
+
+    if (oldState != null) {
+        ......
+    } else {
+        Setting state = new Setting(name, value, packageName);
+        mSettings.put(name, state);
+    }
+    ......
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsState.java中。
+
+上面的方法把每个设置项封装到对象Setting中，接着有把state放置到ArrayMapString, Setting的实例mSettings中。
+
+那么，从方法ensureSettingsStateLocked()到insertSettingLocked()方法，这个过程表明，有一个对象SettingsState，指向文件/data/system/users/0/settings_system.xml，持有变量mSettings，而mSettings持有封装了设置项的name, value, packageName的对象Setting，换句话说，settings_system.xml文件中的所有的设置项间接被SettingsState持有。
+
+又回到migrateLegacySettingsForUserLocked()方法，migrateLegacySettingsLocked()方法执行完毕后，调用systemSettings.persistSyncLocked()，systemSettings是SettingsState的实例，代表的是settings_system.xml所有的设置项，persistSyncLocked()方法就是把systemSettings持有的所有的设置项从内存中固化到文件settings_system.xml中，这个过程的代码就不贴出来了。migrateLegacySettingsForUserLocked()方法中省略的代码，就是和上文的这几个方法一样，把settings_global.xml、settings_secure.xml两个文件中的所有设置项封装到Setting中，被SettingsState持有。
+
+也就是说，settings_global.xml、settings_secure.xml、settings_system.xml三个文件的所有设置项间接被SettingsState持有，而SettingsState又被封装到类SettingsProvider.java的变量mSettingsStates中，mSettingsStates是SparseArray”SettingsState”的实例。它们的层次关系如下图：
+
+这里写图片描述
+
+再次回到方法migrateLegacySettingsForUserLocked()，在把数据中的数据转移到xml文件后，执行下面这段代码：
+
+// Drop the database as now all is moved and persisted.
+if (DROP_DATABASE_ON_MIGRATION) {
+    dbHelper.dropDatabase();
+} else {
+    dbHelper.backupDatabase();
+}
+
+
+如果是工程版本的系统，把数据库settings.db重命名为settings.db-backup，如果是非工程版本的系统，把数据库文件删除，也会删除日志settings.db-journal。
+
+SettnigsProvider启动时会创建settings.db数据库，然后把所有的默认设置项写入到数据库，接着会把数据库中所有的设置项从数据库转移到xml文件中，随后便会对数据库执行删除操作。为什么会有这么一个过程，这些过程是否可以移除创建数据库这一步？其实这个过程是为了兼容之前的版本而设计，在SettingsProvider被Android重构后，SettingsProvider中数据库相关的代码Android已经停止更新。
+封装SettingsProvider接口
+
+由章节前言中的描述，SettingsProvider是向整个Android系统提供用户编好设置的提供程序，所保存的数据类型和方式上也有一定约束和规定，且要求使用SettingsProvider是方便的，代码量少的。因此，需要对ContentProvider的一些接口进行封装，以保证在整个Android的java层任何一个地方都能方便、快捷的使用SettingsProvider进行数据查询，数据更新和数据插入。所以，理所当然地，framework有一个类Settings.java对使用SettingsProvider进行了封装。如下：
+
+public final class Settings {
+    public static final String AUTHORITY = "settings";
+    public static final class Global extends NameValueTable {
+        public static final Uri CONTENT_URI = Uri.parse("content://" + AUTHORITY + "/global");
+        ......
+    }
+
+    public static final class Secure extends NameValueTable {
+        public static final Uri CONTENT_URI = Uri.parse("content://" + AUTHORITY + "/secure");
+        ......
+    }
+
+    public static final class System extends NameValueTable {
+        public static final Uri CONTENT_URI = Uri.parse("content://" + AUTHORITY + "/system");
+        ......
+    }
+
+    private static class NameValueCache {
+        private final Uri mUri;
+        private final HashMap<String, String> mValues = new HashMap<String, String>();
+        public String getStringForUser(ContentResolver cr, String name, final int userHandle) {
+            ......
+        }
+        public boolean putStringForUser(ContentResolver cr, String name, String value,
+                final int userHandle) {
+            ......
+        }
+        private IContentProvider lazyGetProvider(ContentResolver cr) {
+            IContentProvider cp = null;
+            synchronized (NameValueCache.this) {
+                cp = mContentProvider;
+                if (cp == null) {
+                    cp = mContentProvider = cr.acquireProvider(mUri.getAuthority());
+                }
+            }
+            return cp;
+        }
+}
+
+
+这个类定义在文件frameworks/base/core/java/android/provider/Settings.java中。
+
+上面的代码中，分别声明了Global、Secure、System三个静态内部类，分别对应SettingsProvider中的Global、Secure、System三种数据类型。Global、Secure、System三个静态内部类会分别持有自己NameValueCache的实例变量，每个NameValueCache持有指向SettingsProvider中的SettingsProvider.java的AIDL远程调用IContentProvider，读者可以阅读《Android System Server大纲之ContentService和ContentProvider原理剖析》了解ConatentProvider的这个过程。因此，查询数据需要经过NameValueCache的getStringForUser()方法，插入数据需要经过putStringForUser()方法。同时，NameValueCache还持有一个变量mValues，用于保存查询过的设置项，以便下下次再次发起查询时，能够快速返回。
+操作SettingsProvider
+
+由于Settings.java对使用SettingsProvider进行了封装，所以，使用起来相当简单简洁。由于Global、Secure、System三种数据类型的使用是几乎相同，所以本文就只以Global为例对查询插入数据的过程进行分析。
+查询数据
+
+从SettingsProvider的Global中查询数据，查询是否是飞行模式使用方法如下：
+
+String globalValue = Settings.Global.getString(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON);
+
+    1
+
+上面的代码，用起来代码量很少，只需要一行代码即可查询到所需要的值。深入Settings.java看getString()方法：
+
+public static String getString(ContentResolver resolver, String name) {
+    return getStringForUser(resolver, name, UserHandle.myUserId());
+}
+
+/** @hide */
+public static String getStringForUser(ContentResolver resolver, String name,
+        int userHandle) {
+    if (MOVED_TO_SECURE.contains(name)) {
+        Log.w(TAG, "Setting " + name + " has moved from android.provider.Settings.Global"
+                + " to android.provider.Settings.Secure, returning read-only value.");
+        return Secure.getStringForUser(resolver, name, userHandle);
+    }
+    return sNameValueCache.getStringForUser(resolver, name, userHandle);
+}
+
+
+这些方法定义在文件frameworks/base/core/java/android/provider/Settings.java中。
+
+getString()直接调用了getStringForUser()，getStringForUser()首先有做一个判断MOVED_TO_SECURE.contains(name)，做这个判断是因为在Android系统的更新中，保存在Global、Secure、System三种类型的数据的存放位置有变化，所以需要加这个判断兼容老版本的使用方法。在章节“封装SettingsProvider接口”中提到，查询必须经过NameValueCache.getStringForUser()方法，如下：
+
+public String getStringForUser(ContentResolver cr, String name, final int userHandle) {
+    final boolean isSelf = (userHandle == UserHandle.myUserId());
+    if (isSelf) {
+        ......
+            } else if (mValues.containsKey(name)) {
+                return mValues.get(name);
+        ......
+    IContentProvider cp = lazyGetProvider(cr);
+
+    // Try the fast path first, not using query().  If this
+    // fails (alternate Settings provider that doesn't support
+    // this interface?) then we fall back to the query/table
+    // interface.
+    if (mCallGetCommand != null) {
+        try {
+            ......
+            Bundle b = cp.call(cr.getPackageName(), mCallGetCommand, name, args);
+            if (b != null) {
+                String value = b.getString(Settings.NameValueTable.VALUE);
+                ......
+                        mValues.put(name, value);
+                    }
+                return value;
+            }
+        } catch (RemoteException e) {
+            // Not supported by the remote side?  Fall through
+            // to query().
+        }
+    }
+    Cursor c = null;
+    try {
+        c = cp.query(cr.getPackageName(), mUri, SELECT_VALUE, NAME_EQ_PLACEHOLDER,
+                     new String[]{name}, null, null);
+        String value = c.moveToNext() ? c.getString(0) : null;
+        synchronized (NameValueCache.this) {
+            mValues.put(name, value);
+        }
+        return value;
+        ......
+     if (c != null) c.close();
+    }
+}
+}
+
+
+这个方法定义在文件frameworks/base/core/java/android/provider/Settings.java中。
+
+首先从缓存mValues变量中去找，如果没有查询到，就调用SettingsProvider的call()接口，如果call()接口也没有查询到，再调用query()接口。这里用的是call()接口，下文就以call()接口往下分析。cp.call()会调用到SettingsProvider的call()方法，读者可以阅读《Android System Server大纲之ContentService和ContentProvider原理剖析》了解ConatentProvider的这个过程。注意参数mCallGetCommand。
+
+public Bundle call(String method, String name, Bundle args) {
+    final int requestingUserId = getRequestingUserId(args);
+    switch (method) {
+        case Settings.CALL_METHOD_GET_GLOBAL: {
+            Setting setting = getGlobalSetting(name);
+            return packageValueForCallResult(setting, isTrackingGeneration(args));
+        }
+
+        case Settings.CALL_METHOD_GET_SECURE: {
+            Setting setting = getSecureSetting(name, requestingUserId);
+            return packageValueForCallResult(setting, isTrackingGeneration(args));
+        }
+        ......
+    }
+
+    return null;
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+上层传过来的参数的command是mCallGetCommand，即Settings.CALL_METHOD_GET_GLOBAL，所以调用getGlobalSetting()，方法，在章节“SettingsProvider的启动过程”中可知，getGlobalSetting()返回的Setting setting是封装了设置项name、value等信息的，查看getGlobalSetting()方法：
+
+private Setting getGlobalSetting(String name) {
+    // Get the value.
+    synchronized (mLock) {
+        return mSettingsRegistry.getSettingLocked(SETTINGS_TYPE_GLOBAL,
+                UserHandle.USER_SYSTEM, name);
+    }
+}
+
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+通过mSettingsRegistry.getSettingLocked()继续寻找：
+
+public Setting getSettingLocked(int type, int userId, String name) {
+    final int key = makeKey(type, userId);
+
+    SettingsState settingsState = peekSettingsStateLocked(key);
+    return settingsState.getSettingLocked(name);
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+通过peekSettingsStateLocked(key)寻找SettingsState：
+
+private SettingsState peekSettingsStateLocked(int key) {
+    SettingsState settingsState = mSettingsStates.get(key);
+    if (settingsState != null) {
+        return settingsState;
+    }
+
+    ensureSettingsForUserLocked(getUserIdFromKey(key));
+    return mSettingsStates.get(key);
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+获取到SettingsState settingsState，回到getSettingLocked()，调用settingsState.getSettingLocked(name)：
+
+public Setting getSettingLocked(String name) {
+    if (TextUtils.isEmpty(name)) {
+        return mNullSetting;
+    }
+    Setting setting = mSettings.get(name);
+    if (setting != null) {
+        return new Setting(setting);
+    }
+    return mNullSetting;
+}
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsState.java中。
+
+到getSettingLocked()最终获取到Setting setting，其实这个过程就是章节“SettingsProvider的启动过程”中的层次关系图的反映，读者可以查看这个图更好理解这个过程。
+插入数据
+
+从SettingsProvider的Global中插入数据，插入飞行模式的使用方法如下：
+
+boolean isSuccess = Settings.System.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 1);
+
+    1
+
+和查询一样，代码非常简洁，这个过程和查询几乎类似，将快速游览这个过程。往下跟踪：
+
+public static boolean putInt(ContentResolver cr, String name, int value) {
+    return putString(cr, name, Integer.toString(value));
+}
+public static boolean putString(ContentResolver resolver,
+        String name, String value) {
+    return putStringForUser(resolver, name, value, UserHandle.myUserId());
+}
+public static boolean putStringForUser(ContentResolver resolver,
+        String name, String value, int userHandle) {
+    ......
+    return sNameValueCache.putStringForUser(resolver, name, value, userHandle);
+}
+
+
+这个方法定义在文件frameworks/base/core/java/android/provider/Settings.java中。
+
+和查询一样，继续看putStringForUser()：
+
+public boolean putStringForUser(ContentResolver cr, String name, String value,
+        final int userHandle) {
+    try {
+        Bundle arg = new Bundle();
+        arg.putString(Settings.NameValueTable.VALUE, value);
+        arg.putInt(CALL_METHOD_USER_KEY, userHandle);
+        IContentProvider cp = lazyGetProvider(cr);
+        cp.call(cr.getPackageName(), mCallSetCommand, name, arg);
+    } catch (RemoteException e) {
+        Log.w(TAG, "Can't set key " + name + " in " + mUri, e);
+        return false;
+    }
+    return true;
+}
+
+
+这个方法定义在文件frameworks/base/core/java/android/provider/Settings.java中。
+
+直接调用SettingsProvider的call()接口：
+
+public Bundle call(String method, String name, Bundle args) {
+    final int requestingUserId = getRequestingUserId(args);
+    switch (method) {
+        ......
+
+        case Settings.CALL_METHOD_PUT_GLOBAL: {
+            String value = getSettingValue(args);
+            insertGlobalSetting(name, value, requestingUserId, false);
+            break;
+        }
+
+        case Settings.CALL_METHOD_PUT_SECURE: {
+            String value = getSettingValue(args);
+            insertSecureSetting(name, value, requestingUserId, false);
+            break;
+        }
+
+        ......
+    }
+
+    return null;
+}
+
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+首先调用getSettingValue(args)获取对应的设置项，接着insertGlobalSetting()方法：
+
+private boolean insertGlobalSetting(String name, String value, int requestingUserId,
+        boolean forceNotify) {
+    return mutateGlobalSetting(name, value, requestingUserId, MUTATION_OPERATION_INSERT,
+            forceNotify);
+}
+
+    1
+    2
+    3
+    4
+    5
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+直接调用了mutateGlobalSetting()方法：
+
+private boolean mutateGlobalSetting(String name, String value, int requestingUserId,
+        int operation, boolean forceNotify) {
+    // Make sure the caller can change the settings - treated as secure.
+    enforceWritePermission(Manifest.permission.WRITE_SECURE_SETTINGS);
+
+    // If this is a setting that is currently restricted for this user, do not allow
+    // unrestricting changes.
+    if (isGlobalOrSecureSettingRestrictedForUser(name, callingUserId, value)) {
+        return false;
+    }
+
+    // Perform the mutation.
+    synchronized (mLock) {
+        switch (operation) {
+            case MUTATION_OPERATION_INSERT: {
+                return mSettingsRegistry
+                        .insertSettingLocked(SETTINGS_TYPE_GLOBAL, UserHandle.USER_SYSTEM,
+                                name, value, getCallingPackage(), forceNotify);
+            }
+
+            ......
+        }
+    }
+    return false;
+}
+
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+首先对使用的进行权限检查，然后调用mSettingsRegistry.insertSettingLocked()方法：
+
+public boolean insertSettingLocked(int type, int userId, String name, String value,
+        String packageName, boolean forceNotify) {
+    final int key = makeKey(type, userId);
+
+    SettingsState settingsState = peekSettingsStateLocked(key);
+    final boolean success = settingsState.insertSettingLocked(name, value, packageName);
+
+    if (forceNotify || success) {
+        notifyForSettingsChange(key, name);
+    }
+    return success;
+}
+
+
+这个方法定义在文件frameworks/base/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java中。
+
+到这里，就不往下分析了，其实这个即是查询的反过程，结合章节“SettingsProvider的启动过程”中的层次关系图，能够很好理解这个过程。
+第三方APP使用SettingsProvider
+
+第三方APP可以通过framework的Settings.java查询SettingsProvider中的设置项，使用方法查阅章节“查询数据”。第三APP是否可以修改SettingsProvider的设置项？Android系统不允许第三方APP修改SettingsProvider中的设置项。
+权限问题
+
+查阅SettingsProvider的设置项不需要声明任何权限。
+
+修改SettingsProvider需要权限：
+
+    android.permission.WRITE_SETTINGS，Protection level: signature
+    Secure数据：android.permission.WRITE_SECURE_SETTINGS，Not for use by third-party applications.
+
+对已Global和Secure模块，还需要关心上文中的isGlobalOrSecureSettingRestrictedForUser()方法设置到的限制。
+
+
