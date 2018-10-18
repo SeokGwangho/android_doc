@@ -1,0 +1,343 @@
+--------------------------------------------------------------------------
+android系统安全策略te语法分析
+--------------------------------------------------------------------------
+一. 基本语法
+很多.te文件集中在/external/sepolicy文件夹下，MTK也有很多自定义的在/device/mediatek/common/sepolicy
+
+它的最基本样子是：
+    allow factory powerctl_prop:property_service set;
+    allow factory ttyGS_device:chr_file { read write open ioctl};
+    allow factory ttyMT_device:chr_file { read write open ioctl};
+    allow factory irtx_device:chr_file  { read write ioctl open };
+    allow factory devpts:chr_file       { read write getattr ioctl };
+
+相似的te语句的,会被归类在同一个te文件下面, 如上面的语句是作用于factory，则会在factory.te文件里。
+
+\external\sepolicy集中了很多系统定义的te文件，如：
+   文件名 	              归类
+mac_permissions.xml 	App进程
+seapp_contexts 	      App数据文件
+file_contexts 	      系统文件
+property_contexts 	  系统属性
+
+
+.te文件，最基本的语法为：
+          rule_name source_type target_type:class perm_set
+
+意思：
+          rule_name   ：规则名称，除了有allow还有dontaudit，auditallow和neverallow
+          source_type ：源类型，对应一个很重要的概念--------域（domain）
+          tartget_type：目标的类型，即安全上下文，SELinux的一个重要的判断对象
+          class       ：类别，目标（客体）是哪种类别，主要有File,Dir,Socket,SEAndroid还有Binder等，在这些基础上又细分出设备字符类型（chr_file），链接文件（lnk_file）等。可以通过ls -l查看文件类型
+          perm_set：动作集
+
+拿一个实例下来分析一下：
+      用中文来表述是：允许factory域里的进程或服务
+      对类型为ttyMT_device的类别为文件(file)
+      执行open,read,write,ioctl权限
+      
+    allow factory ttyMT_device:chr_file { read write open ioctl};
+
+
+从上到下按顺序介绍一下：
+allow：允许某个进程执行某个动作
+auditallow：audit含义就是记录某项操作。默认SELinux只记录那些权限检查失败的操作。 auditallow则使得权限检查成功的操作也被记录。注意，allowaudit只是允许记录，它和赋予权限没关系。赋予权限必须且只能使用allow语句。
+dontaudit：对那些权限检查失败的操作不做记录。
+neverallow：没有被allow到的动作默认就不允许执行的。neverallow只是显式地写出某个动作不被允许，如果添加了该动作的allow，则会编译错误
+
+source_type：
+指定一个“域”（domain），一般用于描述进程，该域内的的进程，受该条TE语句的限制。用type关键字，把一个自定义的域与原有的域相关联
+最简单地定义一个新域的方式为：
+
+    type shell, domain
+
+上面这句话的意思是，赋予shell给domain属性，同时，shell与属于domain这个集合里。如果有一个allow domain xxxxx 的语句，同样地也给了shell xxxxx的属性
+
+target_type：
+指定进程需要操作的客体（文件，文件夹等）类型（安全上下文），同样是用type与一些已有的类型，属性相关联
+以上面的ttyMT_device为例：
+
+    //定义一个类型，属于dev_type属性
+    type ttyMT_device, dev_type;
+    //属性dev_type在external/sepolicyattributes的定义如下
+    attribute dev_type;
+
+attribute关键字定义一个属性，type可以与一个或多个属性关联，如
+
+    type usb_device, dev_type, mlstrustedobject;
+
+另外，还有一个关键字typeattribute，type有两个作用，定义（声明）并关联某个属性。可以把这两个作用分开，type定义，typeattribute进行关联
+
+    #定义httpd_user_content_t，并关联两个属性
+    type httpd_user_content_t, file_type, httpdcontent;  
+    分成两条语句进行表述：
+    #定义httpd_user_content_t
+    type httpd_user_content_t;
+    #关联属性   
+    typeattribute httpd_user_content_t file_type, httpdcontent;
+
+这些类型（安全上下文）会显示地与一个“文件”想关联，如：
+file_contexts里面显式定义了哪些文件属于ttyMT_device类型，即用ls -Z显示出来文件的安全上下文
+
+    /dev/ttyMT.* u:object_r:ttyMT_device:s0
+
+虚拟文件系统的标识方式与普通的文件系统文件标识方式不一样，用genfscon来配置。
+
+    genfscon的语法是：
+    genfscon fs_type pathprefix [-file_type] context
+
+把/proc/mtk_demo/demo_file文件的安全上下文设置成demo_context
+
+    genfscon proc /mtk_demo/demo_file u:object_r:demo_context:s0
+
+
+网络对象上下文
+
+    例1：定义端口的上下文
+    portcon tcp 80 system_u:object_r:http_port_t
+    portcon tcp 8080 system_u:object_r:http_port_t
+    
+    例2：定义网络接口的上下文：
+    netifcon eth0 system_u:object_r:netif_eth0_t system_u:object_r:netmsg_eth0_t
+    
+    例3：定义节点的上下文
+    nodecon 10.33.10.66 255.255.255.255 system_u:object_r:node_zeus_t;
+    nodecon 10.33.10.0 255.255.255.0 system_u:object_r:node_any_t
+
+        
+然后你会有一个疑问，这么多属性，这些属性有什么作用，这些属性会有一个地方显式地说明这个属性拥有什么权限，
+在external/sepolicy/domain里就有非常详细的描述。
+另个在external/sepolicy/attributes里定义了很多属性，下面截取了一些常见的定义：
+
+    # All types used for devices.
+    attribute dev_type;
+    # All types used for processes.
+    attribute domain;
+    # All types used for filesystems.
+    attribute fs_type;
+    # All types used for files that can exist on a labeled fs.
+    # Do not use for pseudo file types.
+    attribute file_type;
+    # All types used for domain entry points.
+    attribute exec_type;
+    # All types used for property service
+    attribute property_type;
+    # All service_manager types created by system_server
+    attribute system_server_service;
+    # All domains that can override MLS restrictions.
+    # i.e. processes that can read up and write down.
+    attribute mlstrustedsubject;
+    # All types that can override MLS restrictions.
+    # i.e. files that can be read by lower and written by higher
+    attribute mlstrustedobject;
+    # All domains used for apps.
+    attribute appdomain;
+    # All domains used for apps with network access.
+    attribute netdomain;
+    # All domains used for binder service domains.
+    attribute binderservicedomain;
+
+
+class：
+客体的具体类别。用class来定义一个客体类别，具体定义方式 如下
+
+    [external/sepolicy/security_classes示例]
+    # file-related classes
+    class filesystem
+    class file  #代表普通文件
+    class dir   #代表目录
+    class fd    #代表文件描述符
+    class lnk_file  #代表链接文件
+    class chr_file  #代表字符设备文件
+     ......
+     
+    # network-related classes
+    class socket   #socket
+    class tcp_socket
+    class udp_socket
+    ......
+    class binder   #Android平台特有的binder
+    class zygote   #Android平台特有的zygote
+
+
+perm_set：
+具体的操作，系统的定义在external/sepolicy/access_vectors。有两种定义方法。
+用common命令定义：
+
+    格式为：common common_name { permission_name ... } 
+    common定义的perm set能被另外一种perm set命令class所继承
+    如：
+    common file {
+          ioctl read write create getattr setattr lock relabelfrom relabelto
+          append unlink link rename execute swapon quotaon mounton 
+
+用class命令定义：
+    class class_name [ inherits common_name ] { permission_name ... }
+    inherits表示继承了某个common定义的权限  
+    注意，class命令它不能被其他class继承
+    继承一个common，如继承了file common
+    class dir
+    inherits file
+    {
+            add_name
+            remove_name
+            reparent
+            search
+            rmdir
+            open
+            audit_access
+            execmod
+    }
+    不继承任何common，如
+    class binder
+    {
+            impersonate
+            call
+            set_context_mgr
+            transfer
+    }
+
+
+    然后是一些特殊的配置文件：
+    a. external/sepolicy/attributes -> 所有定义的attributes都在这个文件
+    b. external/sepolicy/access_vectors -> 对应了每一个class可以被允许执行的命令
+    c. external/sepolicy/roles -> Android中只定义了一个role，名字就是r，将r和attribute domain关联起来
+    d. external/sepolicy/users -> 其实是将user与roles进行了关联，设置了user的安全级别，s0为最低级是默认的级别，mls_systemHigh是最高的级别
+    e. external/sepolicy/security_classes -> 指的是上文命令中的class，个人认为这个class的内容是指在android运行过程中，程序或者系统可能用到的操作的模块
+    f. external/sepolicy/te_macros -> 系统定义的宏全在te_macros文件
+    g. external/sepolicy/***.te -> 一些配置的文件，包含了各种运行的规则
+
+----------------引用于《android中SELINUX规则分析和语法简介》
+
+
+二. TE的正则表达式和集合
+TE文件支持正则表达式，从下面可以看到，通配符是常用的通配符：
+
+    /sys/devices/system/cpu(/.*)?    u:object_r:sysfs_devices_system_cpu:s0
+    /sys/power/wake_lock -- u:object_r:sysfs_wake_lock:s0
+    /sys/power/wake_unlock -- u:object_r:sysfs_wake_lock:s0
+    /sys/kernel/uevent_helper --    u:object_r:usermodehelper:s0
+    /sys/module/lowmemorykiller(/.*)? -- u:object_r:sysfs_lowmemorykiller:s0
+    
+    # asec containers
+    /mnt/asec(/.*)?             u:object_r:asec_apk_file:s0
+    /mnt/asec/[^/]+/[^/]+\.zip  u:object_r:asec_public_file:s0
+
+需要注意的是上面的"--"，它表示二进制文件，类似的还有：
+    #‘-b’ - Block Device ‘-c’ - Character Device
+    #‘-d’ - Directory ‘-p’ - Named Pipe
+    #‘-l’ - Symbolic Link ‘-s’ - Socket
+    #‘--’ - Ordinary file
+
+
+TE表达式里可以用“{}”来表示一个集合，如：
+    allow user_t bin_t : { file dir } { read getattr }; //允许user_t对bin_t类型的文件和文件夹执行read,getattr操作
+    allow domain { exec_type sbin_t } : file execute;   //允许domain对exec_type,sbin_t类型的文件执行execute的动作
+
+可以在集合里使用“*”，“-” 和 “~” 三个通配符：
+    allow user_t bin_t : { file dir } *;                 //允许user_t对bin_t类型的文件和文件夹执行所有操作
+    allow user_t bin_t : { file dir } ~{ read getattr }; //允许user_t对bin_t类型的文件和文件夹执行除了read,getattr以外的所有操作
+    allow domain { exec_type -sbin_t } : file execute;   //允许domain对exec_type类型的文件执行execute的动作，除了sbin_t以外
+
+
+三. TE的类型转换规则
+为什么要转换类型
+init进程拥有系统的最高权限，如果由Init进程fork，execu出来的进程，默认是与init相同的权限，这肯定是不安全的。
+另一个，由init生成的文件，默认也是init的读写权限，不方便其他低权限的文件进行访问。
+
+类型转换有两种类型转换：
+1. 主体的域的转换
+2. 客体的转换
+
+域的转换
+type_transition的完整格式为：
+
+    type_transition source_type target_type : class default_type;
+    举个例子
+    type_transition init_t apache_exec_t : process apache_t;
+
+type_transition init_t apache_exec_t : process apache_t;
+ init_t 进程执行type为apache_exec_t的可执行文件时，新的进程转换到apache_t域
+但是上面只是告诉了转换的过程，却没有说明，有转换的权限，如果要上面的转换成功，还需要下面的语句：
+
+    #首先，你得让init_t域中的进程能够执行type为apache_exec_t的文件
+    allow init_t apache_exec_t : file execute;
+    #然后，你还得告诉SELiux，允许init_t做DT切换以进入apache_t域
+    allow init_t apache_t : process transition;
+    #最后，你还得告诉SELinux，切换入口（对应为entrypoint权限）为执行pache_exec_t类型的文件
+    allow apache_t apache_exec_t : file entrypoint;
+
+
+客体的转换
+例子：
+    type_transition passwd_t tmp_t : file passwd_tmp_t;  
+
+passwd_t在tmp_t目录下创建文件时，该文件的类型转化为passwd_tmp_t。这里默认隐含了一个tmp_t类型dir，因为file的容器只能是个dir。
+同样的，如果要上面的语句运行成功，与需要有相应的权限说明：
+
+    对应的必须有两个前提条件:
+    * The source domain needs permission to add file entries into the directory
+    这个process 必须有在这个目录下添加文件的权限.
+     
+    * The source domain needs permission to create file entries
+    这个process 必须有在这个目录下创建以这个Security Context 为Label 的文件权限.
+
+如果每个转换之前都需要这样繁锁地权限声音实在很麻烦。TE里允许把这些相同的，重复使用的语句定义成一个宏，类似于函数一样。
+
+四. TE的宏
+如果把上面domain转换的例子定义成一个宏，应该定义如下：
+
+    #定义domain_auto_trans宏，$1,$2等等代表宏的第一个，第二个....参数
+    define(`domain_auto_trans', `
+    	# 先allow相关权限,domain_trans宏定义在后面
+    	domain_trans($1,$2,$3)
+    	# 然后设置type_transition
+    	type_transition $1 $2:process $3;
+    ')
+    #定义domain_trans宏。
+    define(`domain_trans', `
+    	# SEAndroid在上述三个最小权限上，还添加了自己的一些权限
+    	allow $1 $2:file { getattr open read execute };
+    	allow $1 $3:process transition;
+    	allow $3 $2:file { entrypoint read execute };
+    	allow $3 $1:process sigchld;
+    	dontaudit $1 $3:process noatsecure;
+    	allow $1 $3:process { siginh rlimitinh };
+    ')
+
+上面的宏定义在external/sepolicy/te_macros里。客体的转换定义如下：
+
+    #####################################
+    # file_type_auto_trans(domain, dir_type, file_type)
+    # Automatically label new files with file_type when
+    # they are created by domain in directories labeled dir_type.
+    #
+    define(`file_type_auto_trans', `
+    # Allow the necessary permissions.
+    file_type_trans($1, $2, $3)
+    # Make the transition occur by default.
+    type_transition $1 $2:dir $3;
+    type_transition $1 $2:notdevfile_class_set $3;
+    ')
+    define(`file_type_trans', `
+    # Allow the domain to add entries to the directory.
+    allow $1 $2:dir ra_dir_perms;
+    # Allow the domain to create the file.
+    allow $1 $3:notdevfile_class_set create_file_perms;
+    allow $1 $3:dir create_dir_perms;
+    ')
+
+
+TE的集合也可以定义成一个宏代替，如读写文件操作集的宏：
+    define(`x_file_perms', `{ getattr execute execute_no_trans }')
+    define(`r_file_perms', `{ getattr open read ioctl lock }')
+    define(`w_file_perms', `{ open append write }')
+    define(`rx_file_perms', `{ r_file_perms x_file_perms }')
+    define(`ra_file_perms', `{ r_file_perms append }')
+    define(`rw_file_perms', `{ r_file_perms w_file_perms }')
+    define(`rwx_file_perms', `{ rw_file_perms x_file_perms }')
+    define(`create_file_perms', `{ create rename setattr unlink rw_file_perms }')
+
+使用方式是：
+    allow demo demo_device:chr_file rw_file_perms;
+
