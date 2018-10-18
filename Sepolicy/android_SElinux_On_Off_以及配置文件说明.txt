@@ -1,55 +1,58 @@
+------------------------------------------------------------------
 android SElinux的On/Off，以及配置文件说明
+------------------------------------------------------------------
+SElinux专业词汇：
+MLS  :Multi-Level Security
+RBAC :Role Based Access Control
+DAC  :Discretionary Access Control
+MAC  :Mandatory Access Control
+TEAC     :Type Enforcement Accesc Control
 
+------------------------------------------------------------------
 1. 禁止selinux 
+           方法1 在内核中关闭selinux编译选项： CONFIG_SECURITY_SELINUX
+           方法2 还可以在system.prop中定义：  ro.boot.selinux=disable
+           这2种方法都可以禁用selinux。
 
-1.1 在内核中关闭selinux编译选项： CONFIG_SECURITY_SELINUX
-1.2 还可以在system.prop中定义：  ro.boot.selinux=disable
-这2种方法都可以禁用selinux。
-也可以设置成：                   ro.boot.selinux=permissive  //宽容模式
-1.3 可以通过setenforce １　开启enforce模式,
-           setenforce 0　为permissive模式
-getenforce获取当前模式。
+           也可以设置成：                    ro.boot.selinux=permissive  //宽容模式
 
-
+           1.3 可以通过 setenforce １　//开启enforce模式,
+                       setenforce 0　//为permissive模式
+           getenforce                //获取当前模式。
+------------------------------------------------------------------
 2. 所有安全策略，最终编译成sepolicy文件，放在root目录下,
 init进程启动后，会读取/sepolicy策略文件,并通过/sys/fs/selinux/load节点，把策略文件内容写入内核
-
-3 安全上下文存放root目录
+------------------------------------------------------------------
+3 安全上下文存放
 /etc/security/mac_permissions.xml
-/file_contexts //系统中所有file_contexts安全上下文
-／seapp_contexts //app安全上下文
-／property_contexts //属性的安全上下文
-／service_contexts    //ｓｅｒｖｉｃｅ文件安全上下文
-genfs_contexts //虚拟文件系统安全上下文
-
-4. app在/data/data/文件的安全上下文设置过程
+/file_contexts        //系统中所有file_contexts安全上下文
+/seapp_contexts       //app安全上下文
+/property_contexts    //属性的安全上下文
+/service_contexts     //service文件安全上下文
+genfs_contexts        //虚拟文件系统安全上下文
+------------------------------------------------------------------
+4. app在/data/文件的安全上下文设置过程
           1. 根据uid,pkgname,seinfo在seapp_contexts中匹配.
-          2. 根据匹配到的contexts,重新设置给相对应文件
-
+          2. 根据匹配到的contexts,重新设置给相对应文件.
+------------------------------------------------------------------
 5. 系统中所有的object class 定义在external/sepolicy/security_classes中.
-object class使用在allow语句中，object class所具有的操作定义在external/sepolicy/access_vectors
-文件中
-
+object class使用在allow语句中，object class所具有的操作,定义在external/sepolicy/access_vectors 文件中
+------------------------------------------------------------------
 6 allow语句
-allow语句用来权限设置
-rule_name source_type target_type : class perm_set
+allow 语句用来权限设置
 
+格式:  rule_name source_type target_type : class perm_set    //表示source_type对target_type有perm_set字段所描述的权限
+rule_name   : 有allow,neverallow
+source_type : 权限主体
 
-rule_name : 有allow,neverallow
-source_type : 权限主体,表示source_type对target_type有perm_set描述的权限
 如:
-allow zygote init:process sigchld
-允许zygote域里面的进程可对init域的进程发送sigchld信号
-
+allow zygote init:process sigchld      //允许zygote域里面的进程，可对init域的进程，发送sigchld信号
 
 typeattribute表示把属性和type关联起来
-
-
+------------------------------------------------------------------
 7 role定义
-Android系统中的role定义在external/sepolicy/roles中,
-目前只定义了r
-
-
+Android系统中的role定义在 external/sepolicy/roles 中, 目前只定义了r
+------------------------------------------------------------------
 8 socket　使用
 以/data/misc/wifi/sockets/wlan0 socket来说明使用方法
 1. 定义socket type 
@@ -59,46 +62,34 @@ type wpa_socket ,file_type
 给/data/misc/wifi/sockets目录下所有的文件统一指定安全上下文为wpa＿socket
 3.声明socket使用权限
 在进程te中使用unix_socket_send(clientdomain, wpa, serverdomain)即可建立socket连接
-
-
+------------------------------------------------------------------
 ９　binder使用
-在使用binder　进程的te中根据情况使用如下宏:
-binder_use(domain)//允许domain域中的进程使用binder通信
-binder_call(clientdomain, serverdomain)　//允许clientdomain和serverdomain域中的进程通信
-binder_service(domain)　／／标志domain为service端
+在使用binder　进程的te中根据情况使用，如下宏:
+binder_use(domain)                          //允许domain域中的进程，使用binder通信
+binder_call(clientdomain, serverdomain)     //允许clientdomain和serverdomain域中的进程通信
+binder_service(domain)                      //标志domain为service端
 
-
-
-
-10 文件的使用
-以/dev/wmtWifi来说明：
+------------------------------------------------------------------
+10 对文件的使用例子： 以/dev/wmtWifi来说明：
 １．定义type 
-type wmtWifi_device dev_type //dev_type用来标志/dev/下的文件
+           type wmtWifi_device dev_type     //dev_type用来标志/dev/下的文件
+
 ２．给/dev/wmtWifi指定完全上下文
-/dev/wmtWifi(/.*)? u:object_r:wmtWifi_device:s0
-
-
+           /dev/wmtWifi(/.*)? u:object_r:wmtWifi_device:s0
+           
 3.进程权限设置
 在进程te文件中allow权限
-allow netd wmtWifi_device:chr_file { write open };
+           allow netd wmtWifi_device:chr_file { write open };
 
 
 
-
+------------------------------------------------------------------
 11 property 属性设置
 
 以蓝牙的各种属性来说明
 １．定义type
-type bluetooth_prop, property_type;
+           type bluetooth_prop, property_type;
 ２　设置安全上下文
-bluetooth.              u:object_r:bluetooth_prop:s0
+           bluetooth.              u:object_r:bluetooth_prop:s0
 ３　进程权限设置
-allow bluetooth bluetooth_prop:property_service set;
-
-
-5 专业词汇
-MLS  :Multi-Level Security
-RBAC :Role Based Access Control
-DAC  :Discretionary Access Control
-MAC  :Mandatory Access Control
-TEAC     :Type Enforcement Accesc Control
+           allow bluetooth bluetooth_prop:property_service set;
