@@ -1,0 +1,178 @@
+android_init.rc_and_SEAndroid_SElinux
+
+-----------------------------------------------------------
+android init.rc文件语法详解(续)
+-----------------------------------------------------------
+在“上一篇android  init.rc文件语法详解”，
+
+但是到了android5.0之后，按照上面的方法做，可能我们要启动的[服务]就起不来了。 这是因为采用了新的安全机制——SEAndroid/SElinux。
+
+-----------------------------------------------------------
+下面就介绍下，在SEAndroid/SElinux，如何配置, 才能启动init.rc里面定义的服务。
+-----------------------------------------------------------
+我们在rc文件里面定义一个服务：
+service test1 /system/bin/test
+    user root
+    group root 
+    disabled
+    oneshot
+
+然后再在on boot得时候，启动这个：
+    on boot
+    start test1 
+
+如果在android5.0之前的系统，这样就可以在on boot启动这个服务了。但是到了android5.0之后，这个服务可能启动失败了。
+
+
+查看串口信息（注意不是logcat的信息，是串口信息），我们
+会看到“init: Warning!  Service test1 needs a SELinux domain defined; please fix!”这样警告。
+这是因为我们没有为service test1定义SELinux的权限规则。
+
+
+对于没有定义SELinux的权限规则的service，系统只是给出一条警告，还是会继续启动【这个进程】。
+
+如果我们的【服务】没有触及到未允许的权限操作，那么这个【服务】一样会正常启动的，我们可以直接无视这个警告。
+但是如果触及到未允许的权限操作，那么这个【服务】可能就不能正常启动。这就需要我们定义一个SELinux domain，添加需要的权限。
+
+
+
+下面就介绍如何操作：
+
+第一步,
+    在devices/platform/platform-sub/sepolicy/目录下添加一个test1.te的文件
+  （注意，不同的平台可能路径不一样，反正找到sepolicy目录就好，如果在上面介绍的路径下没有sepolicy目录，也可以直接添加到external/sepolicy/下）。
+
+    然后在sepolicy目录下的Android.mk文件中添加下面的内容
+    BOARD_SEPOLICY_UNION := \
+    ... \
+    test1.te
+    
+第二步，在我们新建的test1.te文件中添加如下内容
+    type test1, domain;
+    type test1, exec_type, file_type;
+    init_daemon_domain(test1)
+
+    然后在file_contexts（如果在sepolicy目录下没有，也可以添加到external/sepolicy/file_contexts）文件中添加如下内容：
+    /system/bin/test u:object_r:test1_exec:s0
+    
+    然后编译，烧录到目标板，重新启动。
+    
+    这时再看串口信息，“init: Warning!  Service test1 needs a SELinux domain defined; please fix!”这个警告没有了。
+    
+    但是我们的服务还是没有正常启动起来。这是因为我们还没有添加权限。
+
+
+第三步，我们查看logcat的调试信息。我们可以通过by Log Message="avc"来过滤。
+    在logcat里面，我们会看到类似下面的警告：
+    avc: denied { execute_no_trans } for path="/system/bin/toolbox" dev="mmcblk0p7" ino=306 scontext=u:r:test1:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=0
+    
+    说明test1没有execute_no_trans的权限， 这就需要我们添加权限，我们可以在test1.te文件中，按下面的格式添加权限：
+    allow scontext tcontext:tclass {denied ...};
+    
+    例如对于上面的警告，我们可以加上如下的语句
+    allow test1 system_file:file {execute_no_trans};
+    也可以是这样 allow test1 system_file:file execute_no_trans;
+    
+    如果最后面的denied 是多项 就必须用{}括起来，如果是一项是可以不要括号的。
+    
+    如果我们想赋予这个class下的所有权限，可以用通配符*号来代替。例如
+    allow test1 system_file:file *;
+
+
+    下面举几个例子
+    avc: denied { execute } for name="pppd" dev="mmcblk0p7" ino=254 scontext=u:r:pppd_gprs:s0 tcontext=u:object_r:ppp_exec:s0 tclass=file permissive=0
+    
+    对于上面的警告，则需在pppd_gprs.te（如果没有这个文件需要参考前面的方法添加这个文件）添加下面的语句
+    allow pppd_gprs ppp_exec:file execute ;
+
+    denied { write } for name="/" dev="mmcblk0p2" ino=1 scontext=u:r:init:s0 tcontext=u:object_r:vfat:s0 tclass=dir permissive=0
+    
+    在init.te添加下面的语句
+    allow init vfat:dir { write   };
+
+    另外添加了权限，有可能编译出错。例如我们添加了：
+    allow test1 system_file:file entrypoint;    
+    
+    可能会出现下面的编译错误：
+    libsepol.check_assertion_helper: neverallow on line 239 of external/sepolicy/domain.te (or line 5194 of policy.conf) violated by allow test1 system_file:file { entrypoint };
+    
+    我们看看domain.te的239行，有下面的语句
+    neverallow domain { file_type -exec_type }:file entrypoint;
+    
+    neverallow和我们定义的allow冲突了，我们需要设置test1为例外
+    
+    所以要修改上面那一句为
+    neverallow { domain -test1 } { file_type -exec_type }:file entrypoint;
+    
+    再编译，通过了。
+    把image下载到目标板上再运行，服务正常跑起来了。
+    
+    如果还是不能正常运行，再看logcat的调试信息，看看还有没有avc的警告，如果有，继续重复前面的步骤，直到没有警告为止，服务就可以正常运行了。
+    
+    
+-------------------------------------------------------------------------------------------------------------------
+通过上面的方法，在init.rc里面启动服务，已经没有问题了，
+但是我们有很多服务，不是在init.rc里面启动的，而是在其他的服务或者进程中根据某些条件，通过：
+property_set("ctl.start", "xxx")、
+property_set("ctl.stop", "xxx") 
+来启动/结束服务。
+
+例如，我们常用的3G、4G的驱动，往往就是在 rild中 初始化模块OK后，启动 pppd_gprs 这个服务的。
+
+但是在5.0下，我们往往会发现rild正常工作了，但是pppd_gprs没有启动。
+logcat看也没有avc相关的警告。
+
+
+
+下面就以这个为例子，看看怎么解决这个问题。
+
+我们接上调试串口，可以看到：
+init: sys_prop: Unable to start service ctl [pppd_gprs] uid:0 gid:1001 pid:148
+init: sys_prop: Unable to stop service ctl [pppd_gprs] uid:0 gid:1001 pid:148
+
+这是因为android在SELINUX的基础上增加了对property的权限的限制。
+
+这个串口信息是在 /system/core/init/property_service.c 的 handle_property_set_fd 函数中打印的。
+
+通过这个调试信息可以看出，是PID=148的进程，没有设置ctl.start的权限，造成的。
+
+再用ps查看当前进程，可以看到PID为148的进程是rild。那么我们给rild赋予权限就好了。
+
+
+
+
+
+下面介绍如何添加property的权限：
+    property对应的上下文，都定义在external/sepolicy/property_contexts文件中，
+    
+    打开这个文件我们可以看到里面有 “ctl.u:object_r:ctl_default_prop:s0” 的定义，
+    
+    说明 ctl.start 和 ctl.stop 对应的上下文是 ctl_default_prop。
+    
+    在这里，我们要给rild赋予设置环境变量的权限： 我们就需要在rild.te的文件中增加
+    allow rild ctl_default_prop:property_service set;
+    就可以了。
+    如果没有这个文件，我们可以参考前面的介绍自己添加一个文件。然后再编译，运行，之前的提示没有了，再看pppd_gprs也已经启动起来了。
+
+    
+    在pppd_gprs的脚本里面，也许有设置property的地方，我们会发现设置property没有生效，
+    
+    看串口信息，有init:sys_prop: permission denied uid:169  name:net.ppp0.local-ip的提示。
+    
+    这个也是在handle_property_set_fd中打印的，这个原因是一样的，也是pppd_gprs服务没有权限。
+    同样参考原来的方法增加权限就好了。
+    
+    如果不知道是哪个服务设置的property，我们可以把source_ctx也打印出来，就知道是哪个服务了。
+    
+    
+    
+
+最后还有一个问题，如果我们设置的property在property_contexts没有定义怎么办呢？
+    例如，前面举例的 net.ppp0.local-ip 没有定义，那怎么处理呢？
+    
+    方法如下：
+    1 在property_contexts中添加
+        net.ppp0.local-ip u:object_r:net_radio_ppp0_prop:s0
+             （net_radio_ppp0_prop可以取任何有名字，也可以是这个文件里面已经定义的名字）
+    2 在property.te文件中增加type net_radio_ppp0_prop, property_type;（如果1中定义的是已经有的名字，2就不需要了）
+    3 参考前面的方法添加权限，就可以了
