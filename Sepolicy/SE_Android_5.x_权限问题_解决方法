@@ -1,0 +1,129 @@
+SE_Android_4.x_权限问题_解决方法
+             
+一、 
+android 4.4？开始，引入了非常严格的selinux权限管理机制，我们经常会遇到因为selinux权限问题造成的各种 avc denied 困扰。  
+
+本文结合具体案例，讲解如何根据log来快速解决90%的权限问题。 
+
+遇到权限问题，在logcat或者kernel的log中，一定会打印 avc denied 提示缺少什么权限，
+
+查看Command： 
+ cat /proc/kmsg | grep avc 或 
+ dmesg | grep avc 
+------------------------------------------------------------------------------
+解决原则是：缺什么补什么，一步一步补到没有avc denied为止。
+------------------------------------------------------------------------------
+
+
+
+下面给出四个案例：  
+------------------------------------------------------------------------------
+案例1. 
+audit(0.0:67): avc: denied { write } for path="/dev/block/vold/93:96" dev="tmpfs" ino=1263 
+scontext=u:r:kernel:s0 tcontext=u:object_r:block_device:s0 tclass=blk_file permissive=0  
+
+分析过程： 
+
+缺少什么权限：          { write }权限                       //write
+谁缺少权限：            scontext=u:r:kernel:s0，           //kernel
+对哪个文件缺少权限：     tcontext=u:object_r:block_device   //block_device
+什么类型的文件：        tclass=blk_file                    //blk_file
+
+解决方法：kernel.te 
+      allow kernel block_device:blk_file write; 
+      
+------------------------------------------------------------------------------
+案例2. 
+audit(0.0:53): avc: denied { execute } for path="/data/data/com.mofing/qt-reserved-files/plugins/platforms/libgnustl_shared.so" 
+dev="nandl" ino=115502 scontext=u:r:platform_app:s0 tcontext=u:object_r:app_data_file:s0 tclass=file permissive=0  
+
+解决方法 ：platform_app.te 
+
+allow  platform_app  app_data_file:file  execute;  
+
+案例3. 
+audit(1444651438.800:8): avc: denied { search } for pid=158 comm="setmacaddr" name="/" dev="nandi" ino=1 scontext=u:r:engsetmacaddr:s0 tcontext=u:object_r:vfat:s0 tclass=dir permissive=0  
+解决方法 ：engsetmacaddr.te 
+
+allow  engsetmacaddr  vfat:dir  { search write add_name create }; 或者 
+
+allow  engsetmacaddr   vfat:dir  create_dir_perms;  
+
+案例4. 
+audit(1441759284.810:5): avc: denied { read } for pid=1494 comm="sdcard" name="0" dev="nandk" ino=245281 scontext=u:r:sdcardd:s0 tcontext=u:object_r:system_data_file:s0 tclass=dir permissive=0  
+
+解决方法 ：sdcardd.te  
+
+ allow  sdcardd  system_data_file:dir  read;  或者
+
+ allow  sdcardd  system_data_file:dir  rw_dir_perms 
+(rw_dir_perms包含read write，可以参考external/sepolicy/global_macros的定义声明)   
+
+
+
+通过这四个案例，可以总结出一般规律, 以第4个为例: 
+
+允许某个scontext对某个tcontext拥有某个权限 
+
+log重新排列一下，
+scontext=u:r:sdcardd 
+tcontext=u:object_r:system_data_file:s0 
+tclass=dir 
+avc: denied { read }  
+
+
+得到万能套用公式如下： 
+
+在scontext所指的.te文件中,加入类似如下内容： 
+                   scontext                   tcontext             tclass                avc denied
+           allow   sdcardd                 system_data_file    :     dir                   read
+
+以上以.te为后缀的文件都在
+external/sepolicy/或者
+device/softwinner/xxxx-commm/sepolicy/下，修改之后，都要重刷boot.img。  
+
+
+补充说明： 
+1. 有时候avc denied的log不是一次性显示所有问题，要等你解决一个权限问题之后，才会提示另外一个权限问题。
+比如提示确实某个目录的read权限，你加入read之后，再显示缺少write权限，要你一次次试，一次次加!
+这时你可以简单粗暴,写个rw_dir_perms，这个权限包含了{open search write ...}等等很多权限。 
+可以查看external/sepolicy/global_macros来了解更多权限声明；  
+
+
+2. 要加入的权限很多时，可以用中括号，比如 
+allow engsetmacaddr  vfat:dir { search write add_name create};  
+
+3. 遇到问题不确定是否由于selinux问题造成，可先在adb shell 下，输入
+setenforce 0，让selinux失效，看是否问题还出现, 以此可以澄清是非selinux造成的问题。  
+
+--------------------------------------------------------------------------------
+二、 
+以上基本是对已经存在的进程增加权限，但对第三方进程，该如何新增一个全新的.te文件，并赋予权限呢？ 
+
+以写mac地址的setmacaddr执行文件，为例（这个执行文件，android原生不存在，自行添加的）：  
+
+1. 在external/sepolicy/【file_contexts】中，参考其他进程声明一个：
+
+     /system/bin/install-recovery.sh u:object_r:install_recovery_exec:s0 
+     /system/bin/dex2oat     u:object_r:dex2oat_exec:s0
+     /system/bin/patchoat    u:object_r:dex2oat_exec:s0 
+     /system/bin/setmacaddr  u:object_r:engsetmacaddr_exec:s0 
+
+指定setmacaddr的路径，并指定一个名字，一定要以_exec结尾  
+
+
+2.参考其他文件在external/sepolicy/ 创建【engsetmacaddr.te】文件，内容如下：
+    type engsetmacaddr, domain; 
+    type engsetmacaddr_exec, exec_type, file_type;  
+
+    init_daemon_domain(engsetmacaddr)  
+
+    allow engsetmacaddr  vfat:dir { search write add_name create}; 
+    allow engsetmacaddr  vfat:file { create read write open }; 
+    allow engsetmacaddr  engsetmacaddr:capability dac_override; 
+    allow engsetmacaddr  shell_exec:file { execute read open execute_no_trans}; 
+    allow engsetmacaddr  system_data_file:dir { write add_name remove_name }; 
+    allow engsetmacaddr  system_data_file:file { create execute_no_trans write open setattr}; 
+    allow engsetmacaddr  system_file:file { execute_no_trans}; 
+
+以上赋予的权限，全部是根据avc denied的log，缺什么一步步补出来的
