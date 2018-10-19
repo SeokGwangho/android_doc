@@ -1,0 +1,228 @@
+-------------------------------------------------------------------
+Android_init.rc语法 介绍（SEAndroid/SELinux之前？）
+-------------------------------------------------------------------
+一、简述
+init.rc文件，由系统第一个启动的init程序解析，此文件由语句组成，
+
+主要包含了四种类型的语句:
+    Action, Commands,Services, Options. 
+    
+    在init.rc 文件中一条语句通常是占据一行.单词之间是通过空格符来相隔的，
+    如果需要在单词内使用空格，那么得使用转义字符"\", 
+    如果在一行的末尾有一个反斜杠，那么是换行折叠符号，应该和下一行合并成一起来处理，这样做主要是为了避免一行的字符太长，与C语言中的含义是一致的。
+    
+    注释，是以#号开头。 
+    
+    Action 和 services显式声明了一个语句块，
+    而commands和options属于最“近”声明的语句块。在第一个语句块之前 的commands和options会被忽略.
+
+-------------------------------------------------------------------
+先了解这些关键词：
+二、关键字
+  token:   计算机语言中的一个单词，就跟英文中的单词差不多一人概念.
+  Section: 语句块，相当于C语言中大括号内的一个块。一个Section是以 Service 或 On 开头的语句块.
+            以 Service 开头的Section叫做 服务(Service),
+            以 On      开头的Section叫做 动作(Action).
+  services: 服务.
+  Action: 动作
+  commands:命令.
+  options:选项.
+  trigger:触发器，或者叫做触发条件.
+  class: 类属，即可以为多个service指定一个相同的类属，方便 同时启动或停止！
+-------------------------------------------------------------------
+
+
+
+
+三、语句解析
+------------------------
+1 动作(Action)
+------------------------
+动作表示了一组命令(commands)组成.
+动作包含一个【触发器】，决定了何时执行这个动作。
+当触发器的条件满足时，这个动作会被加入到已被执行的【队列尾】。如果此动作在队列中已经存在，那么它将不会执行.
+一个动作所包含的命令，将被依次执行。
+
+动作的语法，如下所示:
+on <trigger>  
+      <command>  
+      <command>  
+      <command>
+  
+动作的使用示例如下：
+    on init         //触发器！
+    export PATH /sbin:/system/sbin:/system/bin:/system/xbin
+    mkdir /system
+
+init表示一个触发条件，这个触发事件发生后，例句中进行设置环境变量，和建立目录的操作，称为一个“动作”。
+
+
+
+------------------------
+2 服务(services)
+------------------------
+服务，是指那些需要在【系统初始化时，就启动】或【退出时，自动重启】的程序.
+
+它的语法结构如下所示:
+service <name> <path name> [ <argument> ]*  
+        <option>  
+        <option>  
+        ... 
+        
+动作的使用示例如下：
+service bootsound /system/bin/playmp3
+        user media
+        group audio
+        oneshot
+
+
+------------------------
+3 选项（options)
+------------------------
+选项，是用来【修改服务】的。它们影响【如何】及【何时】运行这个服务.
+
+选项 描述：
+critical                            //据设备相关的关键服务，如果在4分钟内，此服务重复启动了4次，那么设备将会重启进入还原模式。
+disabled                            //服务不会自动运行，必须显式地通过服务器来启动。
+setenv <name> <value>               //设置环境变量
+socket <name> <type> <perm> [ <user> [ <group> ] ]  //在/dev/socket/下创建一个unix domain的socket，并传递创建的文件描述符fd给服务进程.其中type必须为dgram或stream,seqpacket.用户名和组名默认为0
+user <username>                     //在执行此服务之前先切换用户名。当前默认为root.
+group <groupname> [ <groupname> ]*  //类似于user,切换组名
+oneshot                             //当此服务退出时不会自动重启.
+class <name>                        //给服务指定一个类属,这样方便操作多个服务同时启动或停止.默认情况下为default.
+onrestart                           //当服务重启时执行一条指令，
+
+
+------------------------
+4 触发器(trigger)
+------------------------
+触发器用来描述一个触发条件，当这个触发条件满足时可以执行动作. 
+触发器 描述
+boot 当init程序执行，并载入/init.conf文件时触发.
+<name>=<value> 当属性名对应的值设置为指定值时触发.
+device-added-<path> 当添加设备时触发.
+device-removed-<path> 当设备移除时触发.
+service-exited-<name> 当指定的服务退出时触发.
+------------------------
+5 命令(commands)
+------------------------
+命令描述
+exec <path> [ <argument> ]*执行指定路径下的程序，并传递参数.
+export <name> <value>设置全局环境参数，此参数被设置后对所有进程都有效.
+ifup <interface>使指定的网络接口"上线",相当激活指定的网络接口
+import <filename>导入一个额外的init配置文件.
+hostname <name>设置主机名
+chdir <directory>改变工作目录.
+chmod <octal-mode> <path>改变指定文件的读取权限.
+chown <owner> <group> <path>改变指定文件的拥有都和组名的属性.
+chroot <directory>改变进行的根目录.
+class_start <serviceclass>启动指定类属的所有服务，如果服务已经启动，则不再重复启动.
+class_stop <serviceclass>停止指定类属的所胡服务.
+domainname <name>设置域名
+insmod <path>安装模块到指定路径.
+mkdir <path> [mode] [owner] [group]用指定参数创建一个目录，在默认情况下，创建的目录读取权限为755.用户名为root,组名为root.
+mount <type> <device> <dir> [ <mountoption> ]*类似于linux的mount指令
+setkeyTBD(To Be Determined),待定.
+setprop <name> <value>设置属性及对应的值.
+setrlimit <resource> <cur> <max>设置资源的rlimit(资源限制），不懂就百度一下rlimit
+start <service>如果指定的服务未启动，则启动它.
+stop <service>如果指定的服务当前正在运行，则停止它.
+symlink <target> <path>创建一个符号链接.
+sysclktz <mins_west_of_gmt>设置系统基准时间.
+trigger <event>Trigger an event.  Used to queue an action from another action.这名话没有理解，望高手指点.
+write <path> <string> [ <string> ]*往指定的文件写字符串.
+------------------------
+6 属性(Properties)
+------------------------
+init程序在运行时会更新属性系统的一些属性，提供程序内部正在执行的信息.
+属性名描述
+init.action当前正在执行的动作，如果没有则为空字符串""
+init.command当前正在执行的命令.没有则为空字符串.
+init.svc.<name>当前某个服务的状态，可为"stopped", "running", "restarting"
+setprop 用于设置属性，on property可以用于判断属性，这里的属性在整个Android系统运行中都是一致的。init脚本的关键字可以参考init进程的system/core/init/keyword.h文件。init.rc的使用方法，可以参考说明文件system/core/init/readme.txt。如果想要修改启动过程只需要修改init.c（system/core/init）或者init.rc里的内容即可.
+
+-------------------------------------------------------------------
+四、具体分析
+-------------------------------------------------------------------
+以上说明了init.rc中各个组成部分，这些内容是有固定的执行顺序，这个顺序由early-init, init, early-boot, boot这四个关键字决定。
+rc文件中这4个部分是可以打乱顺序随便写的，但是解析完了以后的执行顺序确实固定的，执行顺序如下：early-init -> init -> early-boot -> boot
+==================================================================================================================
+
+        既然android是运行在linux之上的，我们可否只启动linux而不启动android，这样的话在不需要图形界面的设备中可以大大降低硬件运行要求而提供内核服务。我们可以通过修改init.rc来实现。
+
+        android的系统应用中的一个重要的进程就是zygote,所有的java应用程序进程都是由zygote派生出来的，zygote这个进程的作用就是“生儿子”。zygote进程正是在linux kernel startup后通过这个文件启动的，具体看init.rc中这一段：service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server。一段一段的分析这个代码：启动服务名字zygote.   /system/bin/app_process：进程的bin文件具体路径，后面跟的就是启动参数-Xzygote /system/bin --zygote --start-system-server。
+
+==================================================================================================================
+
+       假设要内置的文件名称为iperf。（1）将iperf放到Codebase的任意一个目录下(该目录必须能够在搜索Android.mk时被搜索到)，比如system/iperf/iperf。（2）在system/iperf目录下添加一个Android.mk文件，内容如下：
+LOCAL_PATH:= $(call my-dir)
+PRODUCT_COPY_FILES += $(LOCAL_PATH)/iperf:system/iperf/iperf
+重新编译Codebase即可，该文件将被内置到手机的system/iperf目录下。注意这种方法禁止复制APK文件。
+
+==================================================================================================================
+
+         假设，我们通过adb调试命令调好了一个外设的硬件模块，下一步的动作，需要让系统开机自动跑这些命令并正常启动模块的工作。这个时候，就需要用到sh将这些命令组合起来，放到init.rc中就可以实现这个目的（不要放到init.project.rc中，会影响到WIFIBT）。
+
+        出于执行权限原因，ko文件可以放到vendor的/system/lib/modules下（不能放到vendor对应的/data目录，RELEASE版本/data无权限insmod），可执行文件包括shell则放到vendor的/system/bin下，这样确保任何时候都可以执行。
+
+[cpp] view plain copy 在CODE上查看代码片派生到我的代码片
+#!/system/bin/sh  
+PKG_DIR=/system/lib/modules  
+APP_DIR=/system/bin  
+  
+cd $PKG_DIR  
+CUR_PKG_DIR=`pwd`  
+echo "CUR_PKG_DIR = $CUR_PKG_DIR"  
+  
+insmod $PKG_DIR/accel_qlulpsh.ko   
+insmod $PKG_DIR/mag_qlulpsh.ko   
+insmod $PKG_DIR/gyro_qlulpsh.ko   
+insmod $PKG_DIR/pedometer_qlulpsh.ko   
+insmod $PKG_DIR/gestures_qlulpsh.ko   
+insmod $PKG_DIR/contexts_qlulpsh.ko   
+  
+cd $APP_DIR  
+CUR_APP_DIR=`pwd`  
+echo "CUR_APP_DIR = $CUR_APP_DIR"  
+  
+#Program the Sensor hub   
+echo "SensorHub Programming using loader APP"  
+sleep 1  
+./qlulpsh_loader_app -i ./ulpsh_s2_main.shexe -b 1 -s 1 -t 10 -d  
+sleep 1  
+./qlulpsh_loader_app -c 1 -a 0002  
+  
+echo "Starting SensorHub..."  
+echo 1 > /sys/devices/virtual/QL_Sensors/qlulpsh/intr_enable  
+echo 16 > /sys/devices/virtual/QL_Sensors/qlulpsh/FFE_RunCnt  
+sleep 1  
+  
+echo "Starting sensorservice..."  
+sensorservice &  
+注意：（1）两个可执行文件前要加./，否则提示可执行文件not found，需指明当前目录下。（2）考虑硬件的实际执行情况，sh中有sleep语句，有些读操作要等待真实硬件初始化OK。（3）sensorservice &启动安卓系统sensor服务。
+        在init.rc中，补上如下语句，用service启动一个shell。
+
+view plain copy 在CODE上查看代码片派生到我的代码片
+# SenHub scripts  
+        service myshell /system/bin/sensorhub_init.sh  
+        oneshot  
+
+
+五、实际操作
+有时候希望在启动后做点事情，比如在sdcard上建立目录，修改/data的访问权限等，这些都可以放在init.rc中去完成，下面介绍如何来完。
+通过下面的例子来讲述，实现一个功能：在android系统启动后，修改/data的访问权限为770.
+1、完成一个C语言程序chpermission.c，来实现修改权限的功能。代码如下：
+     #include <stdlib.h>
+      int main()
+     {
+        system("chmod 700 /data");
+         return 0;
+     }
+    然后编译此程序，不过需要编译为android下的可执行程序。
+    编译完后将可执行文件push到模拟器的/data目录中去:
+     #adb push chpermission /data
+     3、 修改init.rc文件,让其启动 chpermission程序， 增加以下代码：
+     #add by me on 2016-03-15    
+     service chpermission   /data/ chpermission 
+          oneshot
+     用于启动 chpermission，完成相应的功能--修改data权限。
