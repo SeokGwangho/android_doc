@@ -3,54 +3,54 @@ Android_HAL_处理访问权限问题
 ----------------------------------------------------
 
 在硬件抽象层模块HAL中，我们是调用open()函数来打开对应的设备文件的。
-例如，我开发的硬件抽象层模块freg中，函数freg_device_open调用open()函数来打开设备文件/dev/freg
+例如，我开发的硬件抽象层模块test_dev中，函数test_dev_device_open调用open()函数来打开设备文件/dev/test_dev
 
 
 if((dev->fd = open(DEVICE_NAME, O_RDWR)) == -1) {
-       LOGE("Failed to open device file /dev/freg -- %s.", strerror(errno));
+       LOGE("Failed to open device file /dev/test_dev -- %s.", strerror(errno));
        free(dev);
        return -EFAULT;
 }
 
-如果不修改设备文件/def/freg的访问权限，那么应用程序调用freg_device_open函数打开设备文件/def/freg就会失败，从日志输出可以看到下面的内容：
+如果不修改设备文件/def/test_dev的访问权限，那么应用程序调用test_dev_device_open函数打开设备文件/def/test_dev就会失败，从日志输出可以看到下面的内容：
 
     Failed to open /dev/hello -- Permission denied.
 
-这表示当前用户，没有权限打开设备文件/dev/freg。
+这表示当前用户，没有权限打开设备文件/dev/test_dev。
 
 在默认情况下，只有【root用户】才有权限访问系统的【设备文件】。
 
-由于一般的应用程序是没有root用户权限的，因此，这里就会提示没有权限打开设备文件/dev/freg。
+由于一般的应用程序是没有root用户权限的，因此，这里就会提示没有权限打开设备文件/dev/test_dev。
 
 
 
-解决这个问题的办法是，赋予root之外的【其他用户】访问设备文件/dev/freg的权限。
+解决这个问题的办法是，赋予root之外的【其他用户】访问设备文件/dev/test_dev的权限。
 我们知道，在Linux系统中，可以通过udev规则，在系统启动时修改设备文件的访问权限。
 
-然而，Android系统并没有实现【udev机制】，因此，我们就不可以通过定义udev规则来赋予root之外的【其他用户】访问设备文件/dev/freg的权限。
+然而，Android系统并没有实现【udev机制】，因此，我们就不可以通过定义udev规则来赋予root之外的【其他用户】访问设备文件/dev/test_dev的权限。
 
 不过，Android提供了另外的一个【uevent机制】，可以在系统启动时，修改设备文件的访问权限。
 
-在system/core/rootdir目录下有一个名为ueventd.rc的配置文件，我们可以在里面增加以下一行内容，来修改设备文件/dev/freg的访问权限：
+在system/core/rootdir目录下有一个名为ueventd.rc的配置文件，我们可以在里面增加以下一行内容，来修改设备文件/dev/test_dev的访问权限：
 
-    /dev/freg                 0666   root       root
+    /dev/test_dev                 0666   root       root
 
-这表示【所有的用户】均可以访问设备文件/dev/freg，即可以打开设备文件/dev/freg，以及读写它的内容。
+这表示【所有的用户】均可以访问设备文件/dev/test_dev，即可以打开设备文件/dev/test_dev，以及读写它的内容。
 ----------------------------------------------------------------------------------------------------------------
-这样，除了root用户之外，系统中的其他用户也可以调用freg_device_open函数来打开设备文件/dev/freg
+这样，除了root用户之外，系统中的其他用户也可以调用test_dev_device_open函数来打开设备文件/dev/test_dev
 ----------------------------------------------------------------------------------------------------------------
 
 
-修改了ueventd.rc文件后，需要重新编译Android源代码工程，这样新修改的设备文件/dev/freg的访问权限才能生效。
+修改了ueventd.rc文件后，需要重新编译Android源代码工程，这样新修改的设备文件/dev/test_dev的访问权限才能生效。
 
-这里，我们介绍一种不必重新编译Android源代码工程，就可以使得修改后的设备文件/dev/freg的访问权限生效的方法：
+这里，我们介绍一种不必重新编译Android源代码工程，就可以使得修改后的设备文件/dev/test_dev的访问权限生效的方法：
 
 在编译Android源代码工程时，文件system/core/rootdir/ueventd.rc会被拷贝到out/target/product/generic/root目录下，
 并且最终打包在ramdisk.img镜像文件中。
 
 当Android系统启动时，会把ramdisk.img镜像文件中的ueventd.rc文件安装在设备根目录中，并且由init进程来解析它的内容，和修改相应的设备文件的访问权限。
 
-因此，只要我们能够修改ramdisk.img镜像文件中ueventd.rc文件的内容，就可以修改设备文件/dev/freg的访问权限。
+因此，只要我们能够修改ramdisk.img镜像文件中ueventd.rc文件的内容，就可以修改设备文件/dev/test_dev的访问权限。
 
 ----------------------------------------------------------------------------------------------------------------
 接下来就详细介绍修改ramdisk.img镜像文件中ueventd.rc文件的方法：
@@ -95,9 +95,9 @@ Android修改ueventd.rc之后另一种快速打包ramdisk.img的方法
 3. 修改ueventd.rc文件
     进入到~/Android/ramdisk目录中，找到ueventd.rc文件，并且往里面增加以下一行内容：
 
-    /dev/freg                  0666   root       root
+    /dev/test_dev                  0666   root       root
 
-    这一行内容赋予了系统中的所有用户访问设备文件/dev/freg的权限。       //！！！！！！！！！！！！！
+    这一行内容赋予了系统中的所有用户访问设备文件/dev/test_dev的权限。       //！！！！！！！！！！！！！
 
 4. 重新打包ramdisk.img镜像文件
 
@@ -112,7 +112,7 @@ Android修改ueventd.rc之后另一种快速打包ramdisk.img的方法
     $ mv ./ramdisk.img.gz ./out/target/product/generic/ramdisk.img
 
     这样，重新打包后得到的ramdisk.img镜像文件中的ueventd.rc文件就修改好了，
-    系统在启动之后就会通过init进程来赋予系统中的所有用户访问设备文件/dev/freg的权限。
+    系统在启动之后就会通过init进程来赋予系统中的所有用户访问设备文件/dev/test_dev的权限。
     
 ----------------------------------------------------------------------------------------------------------------
 udev是Linux 2.6内核新增的一个功能，用来替代原来的devfs，是Linux系统默认的设备管理工具。
