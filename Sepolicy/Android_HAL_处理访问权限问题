@@ -55,6 +55,29 @@ if((dev->fd = open(DEVICE_NAME, O_RDWR)) == -1) {
 ----------------------------------------------------------------------------------------------------------------
 接下来就详细介绍修改ramdisk.img镜像文件中ueventd.rc文件的方法：
 ----------------------------------------------------------------------------------------------------------------
+Android修改ueventd.rc之后另一种快速打包ramdisk.img的方法
+
+网上很多人说，修改了ueventd.rc之后，重新打包ramdisk.img镜像文件，都需要解压，修改，压缩等等步骤！
+
+今天研究了一下手里MTK平台的系统，找到一种快速简单的打包方法。
+
+系统正常编译完成后，out目录下会出现boot.img和ramdisk.img，但是烧录程序的时候，并没有烧录ramdisk.img，
+原来【ramdisk.img】和【kernel】已经被打包进【boot.img】了。
+------------------------------------
+以下是 修改 和 打包 步骤：
+------------------------------------
+1. 修改 system\core\rootdir\ueventd.rc
+2. 执行 make bootimage 编译命令
+
+查看out目录下，ramdisk.img，kernel，boot.img都是最新的，并且“out\target\product\XXX\root\ueventd.rc”也是最新的了。
+
+总结：修改了kernel源码，或者系统源码里需要打包进ramdisk.img的文件，都可以使用make bootimage命令重新编译打包！
+
+
+
+---------------------------------------------------
+上面方法不行，再试这个：
+---------------------------------------------------
 1. 解压ramdisk.img镜像文件
     镜像文件ramdisk.img是一个gzip文件，因此，我们可以执行gunzip命令对它进行解压。
     $ mv ./out/target/product/generic/ramdisk.img ./ramdisk.img.gz
