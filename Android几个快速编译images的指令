@@ -1,0 +1,100 @@
+-------------------------------------------------------------
+1. Android几个快速编译images的指令，未验证
+-------------------------------------------------------------
+
+Android几个比较重要的image：
+
+0.make update-api //修改framework公共api后，更新api
+
+1.make bootimage
+    – boot.img
+
+2.make systemimage
+    – system.img (这个system.img 是 从 out/target/product/xxxx/system 制作打包的)
+
+3.make userdataimage
+    – userdata.img
+
+make ramdisk
+    – ramdisk.img
+
+4.make snod
+    – 快速打包system.img,
+
+
+1.make -jX
+  X表示数字，这个命令将编译Android系统并生成镜像，XX表示可以使用到的CPU核数，这在配置好的电脑上特别有用，公司的16核ubuntu服务器执行make -j16只要不到20分钟，而双核PC上需要4个小时！
+
+2.make snod
+  这条命令将重新生成镜像，消耗的时间很少，类似WinCE的makeimg过程，如果你修改了一些数据文件（如音乐、视频）等文件时比较有用。
+
+3.make cts
+  这条命令将编译CTS套机，编译出的结果放在out目录对应版的data/app目录下面。CTS测试时有用
+
+4.make installclean
+  这条命令清除out目录下对应板文件夹中的内容，也就是相当于make clean，通常如果改变了一些数据文件（如去掉）、最好执行以下make installclean，否则残留在out目录下的还会被打包进去。
+
+5.mm/mm -B
+  开发调试中最喜欢这条命令了，在修改了的目录下执行这条命令，就能智能地进行编译，输出的文件在通过adb推送到目标机，可以很方便地调试。
+
+6.make sdk
+  这条命令可以生成可发布的SDK，目前还没试过，据说需要JDK1.5
+
+7.make Setting
+  可以单独编译setting这个模块，目前还没试，猜想是不是可以单独编译Email、Music这些模块
+
+8.make bootimage
+  用这条命令可以生成boot.img,这个镜像文件中包含Linux Kernel，Ram disk，生成的boot.img只能通过fastboot进行烧写，这在只修改了Linux内核的时候有用
+ 
+9.make systemimage 
+  同上，不过是生成system.img用的。
+-----------------------------------------------------------------------------------------------------------------
+2. 未验证
+-----------------------------------------------------------------------------------------------------------------
+
+快速编译system.img，可以使用这个命令:  make systemimage 
+快速编译boot.img，  可以使用以下命令:  make bootimage 
+快速编译userdata.img，可以使用以下命令:make userdataimage-nodeps
+
+但是，对于bootimage, 在不改变内存布局的情况下，可以使用以下命令：
+#cp ./arch/arm/boot/Image ./arch/arm/boot/kernel
+#mkbootimg --kernel ./arch/arm/boot/kernel --ramdisk ../out/target/product/tcc8800/ramdisk.img --cmdline
+console=ttyTCC,115200n8 --base 0x40000000 --pagesize 8192 --output ../out/target/product/tcc8800/boot.img
+
+
+其实这些生成命令,都在build/core/Makefile中:
+-------------------------------------------------
+生成boot.img的方法： 
+$(INSTALLED_BOOTIMAGE_TARGET):$(MKBOOTIMG) $(INTERNAL_BOOTIMAGE_FILES)
+              $(MKBOOTIMG)  $(INTERNAL_BOOTIMAGE_ARGS) --output $@
+......
+-------------------------------------------------
+生成system.img的方法:
+define build-systemimage-target
+     $(MKYAFFS2) -f $(mkyaffs2_extra_flags) $(TARGET_OUT) $(1)
+-------------------------------------------------
+生成userdata.img的方法:
+define build-userdataimage-target
+mkdir -p $(TARGET_OUT_DATA)
+$(MKYAFFS2) -f $(mkyaffs2_extra_flags) $(TARGET_OUT_DATA) $(INSTALLED_USERDATAIMAGE_TARGET)
+-------------------------------------------------
+同样，ramdisk.img的生成方法为：
+BUILT_RAMDISK_TARGET := $(PRODUCT_OUT)/ramdisk.img
+ INSTALLED_RAMDISK_TARGET := $(BUILT_RAMDISK_TARGET)
+$(INSTALLED_RAMDISK_TARGET): $(MKBOOTFS) $(INTERNAL_RAMDISK_FILES) | $(MINIGZIP)
+$(MKBOOTFS) $(TARGET_ROOT_OUT) | $(MINIGZIP) > $@
+
+
+-------------------------------------------------
+为方便起见，也可以在Makefile中加入以下内容:
+BUILT_RAMDISK_TARGET := $(PRODUCT_OUT)/ramdisk.img
+.PHONY: ramdiskimage
+ramdiskimage: ${BUILT_RAMDISK_TARGET}
+
+然后，就可以输入：make ramdiskimage 来编译ramdisk.img文件了
+
+
+-------------------------------------------------
+最简单的方法是:
+  out/host/linux-x86/bin/mkbootfs out/target/product/tcc8900/root |
+  out/host/linux-x86/bin/minigzip > out/target/product/tcc8900/ramdisk.img
