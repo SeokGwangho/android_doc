@@ -1,0 +1,406 @@
+Android系统的GPS分析1(JNI,HAL)
+			shiguanghu
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//先来个整个流程的概括：
+Step0: 
+	Board启动时：
+Step1:
+	
+Step2:
+	HAL的open_gps--->
+
+//
+GPSInterface实体在gps_device_t里，gps_device_t在
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
+GPS层次架构如下：
+-----------------------------------------------------
+Applicatoin
+		Locaton Applications
+-----------------------------------------------------
+Framework
+	LocationManagerService, LocationManager,
+	LocationProvider,       LocationListener
+-----------------------------------------------------
+JNI
+	com_android_server_location_GpsLocationProvider
+-----------------------------------------------------
+HAL
+	gps_device_t, GpsInterface
+-----------------------------------------------------
+Kernel
+		GPS Driver
+-----------------------------------------------------
+		GPS Device
+-----------------------------------------------------
+
+
+
+
+-------------------------------------------------------------------------------------------------------------
+1 GPS分析
+-------------------------------------------------------------------------------------------------------------
+--------------------------
+1.1 头文件
+--------------------------
+头文件定义在：hardware/libhardware/include/hardware/gps.h，定义了GPS底层相关的结构体和接口
+
+GpsLocation: 	
+		//GPS位置信息结构体，包含经纬度，高度，速度，方位角等。
+	    	
+	    	typedef uint16_t GpsLocationFlags; 	    /** Flags to indicate which values are valid in a GpsLocation. */
+
+	    	// IMPORTANT: Note that the following values must match constants in GpsLocationProvider.java.  
+	    	#define GPS_LOCATION_HAS_LAT_LONG   0x0001  /** GpsLocation has valid latitude and longitude.有效的纬度和经度 */  
+	    	#define GPS_LOCATION_HAS_ALTITUDE   0x0002  /** GpsLocation has valid altitude. 有效高度*/ 
+		#define GPS_LOCATION_HAS_SPEED      0x0004  /** GpsLocation has valid speed.    有效速度*/ 
+	   	#define GPS_LOCATION_HAS_BEARING    0x0008  /** GpsLocation has valid bearing.  有效方位*/ 
+	    	#define GPS_LOCATION_HAS_ACCURACY   0x0010  /** GpsLocation has valid accuracy. 有效准确度*/
+	      
+		/** Represents a location. */
+		typedef struct {
+			size_t          size;  		/** set to sizeof(GpsLocation) */
+			uint16_t        flags; 		/** Contains GpsLocationFlags bits. */
+			double          latitude;  	/** Represents latitude in degrees. 纬度*/
+			double          longitude;  	/** Represents longitude in degrees. 经度*/
+			double          altitude;  	/** Represents altitude in meters above the WGS 84 reference ellipsoid. 高度*/
+			float           speed;  	/** Represents speed in meters per second.速度 */
+			float           bearing;  	/** Represents heading in degrees. 方位*/
+			float           accuracy;  	/** Represents expected accuracy in meters. 精度*/
+			GpsUtcTime      timestamp;  	/** Timestamp for the location fix.
+		} GpsLocation;  
+
+GpsStatus:
+		//GPS状态包括5种状态，分别为: 未知,正在定位,停止定位,启动未定义,未启动。
+		  
+		typedef uint16_t GpsStatusValue;       /** GPS status event values.*/
+		
+		// IMPORTANT: Note that the following values must match constants in GpsLocationProvider.java.  
+		#define GPS_STATUS_NONE             0  /** GPS status unknown. */
+		#define GPS_STATUS_SESSION_BEGIN    1  /** GPS has begun navigating. */
+		#define GPS_STATUS_SESSION_END      2  /** GPS has stopped navigating. */
+		#define GPS_STATUS_ENGINE_ON        3  /** GPS has powered on but is not navigating. */
+		#define GPS_STATUS_ENGINE_OFF       4  /** GPS is powered off. */
+
+		/** Represents the status. */  
+		typedef struct {  
+			size_t         size;  	/** set to sizeof(GpsStatus) */
+			GpsStatusValue status;
+		} GpsStatus;
+	
+GpsSvInfo:
+		//GPS卫星信息，包含卫星编号，信号强度，卫星仰望角，方位角等
+		/** Represents SV information. */  
+		typedef struct {  
+			size_t 	size; 		/** set to sizeof(GpsSvInfo) */  
+			int     prn;  		/** Pseudo-random number for the SV. */  float   snr;  		/** Signal to noise ratio. */ float   elevation;  	/** Elevation of SV in degrees. */ float   azimuth;  	/** Azimuth of SV in degrees. */ } GpsSvInfo; 
+
+GpsSvStatus: 
+		//GPS卫星状态，包含可见卫星数和信息，星历时间，年历时间等。
+
+		/** Represents SV status. */  
+		typedef struct {  
+			size_t      size;  		/** set to sizeof(GpsSvStatus) */
+			int         num_svs;  		/** Number of SVs currently visible. */
+			GpsSvInfo   sv_list[GPS_MAX_SVS]  	/** Contains an array of SV information. */
+			uint32_t    ephemeris_mask;     /** Represents a bit mask indicating which SVs have ephemeris data. */
+			uint32_t    almanac_mask; 	/** Represents a bit mask indicating which SVs have almanac data. */
+			uint32_t    used_in_fix_mask;   /** Represents a bit mask indicating which SVs were used for computing the most recent position fix. */
+		} GpsSvStatus;  
+
+
+GpsCallbacks:
+		//回调函数定义
+	typedef void (* gps_location_callback)(GpsLocation* location);  //向上层()传递GPS位置信息
+									/** Callback with location information. Can only be called from a thread created by create_thread_cb. */  
+	typedef void (* gps_status_callback)(GpsStatus* status);  	//向上层传递GPS状态信息
+									/** Callback with status information. Can only be called from a thread created by create_thread_cb. */  
+	typedef void (* gps_sv_status_callback)(GpsSvStatus* sv_info);  //向上层传递GPS卫星信息
+									/** Callback with SV status information. Can only be called from a thread created by create_thread_cb. */  
+	typedef void (* gps_nmea_callback)(GpsUtcTime timestamp, const char* nmea, int length); //向上层传递NMEA数据
+									/** Callback for reporting NMEA sentences. Can only be called from a thread created by create_thread_cb.*/  
+	typedef void (* gps_set_capabilities)(uint32_t capabilities);   //告知GPS模块可以实现的功能
+									/** Callback to inform framework of the GPS engine's capabilities. 
+									    Capability parameter is a bit field of GPS_CAPABILITY_* flags. */  
+	typedef void (* gps_acquire_wakelock)();  			//上锁，防止处理GPS事件时中止。
+									/** Callback utility for acquiring the GPS wakelock. 
+									    This can be used to prevent the CPU from suspending while handling GPS events. */  
+	typedef void (* gps_release_wakelock)();  			//释放锁
+									/** Callback utility for releasing the GPS wakelock. */  
+	typedef pthread_t (* gps_create_thread)(const char* name, void (*start)(void *), void* arg);  //等待上层请求
+									/** Callback for creating a thread that can call into the Java framework code. 
+									    This must be used to create any threads that report events up to the framework. 
+
+	/** GPS callback structure. */
+	typedef struct {
+		size_t      size; 		/** set to sizeof(GpsCallbacks) */
+		gps_location_callback 		location_cb;
+		gps_status_callback 		status_cb;
+		gps_sv_status_callback 		sv_status_cb;
+		gps_nmea_callback 		nmea_cb;
+		gps_set_capabilities 		set_capabilities_cb;
+		gps_acquire_wakelock 		acquire_wakelock_cb;
+		gps_release_wakelock 		release_wakelock_cb;
+		gps_create_thread 		create_thread_cb;
+	} GpsCallbacks;  
+
+
+-------------------------------------------------------------------------------------------------------------------------------
+GpsInterface:
+		//GPSInterface是最重要的结构体，上层()是通过此接口与硬件适配层交互的。
+
+		/** Represents the standard GPS interface. */  
+		typedef struct {  
+			size_t          size;  /** set to sizeof(GpsInterface) */
+			int   (*init)( GpsCallbacks* callbacks ); 	/** Opens the interface and provides the callback routines to the implemenation of this interface.*/  
+			int   (*start)( void );  			/** Starts navigating. 启动定位*/
+			int   (*stop)( void );  			/** Stops navigating. 取消定位*/
+			void  (*cleanup)( void );  			/** Closes the interface. 关闭GPS接口*/
+			int   (*inject_time)(GpsUtcTime time, int64_t timeReference, int uncertainty); /** Injects the current time.填入时间 */
+			int   (*inject_location)(double latitude, double longitude, float accuracy);  //填入位置 
+									/** Injects current location from another location provider (typically cell ID). 
+									* latitude and longitude are measured in degrees expected accuracy is measured in meters */  
+
+			void  (*delete_aiding_data)(GpsAidingData flags);  //删除全部或部分辅助数据，在性能测试时使用
+									/*  Specifies that the next call to start will not use the  information defined in the flags. 
+									    GPS_DELETE_ALL is passed for a cold start. */  
+
+			int   (*set_position_mode)(GpsPositionMode mode, GpsPositionRecurrence recurrence, uint32_t min_interval, uint32_t preferred_accuracy, uint32_t preferred_time); 
+									//设置定位模式和GPS工作模式等   
+									/**
+									* min_interval represents the time between fixes in milliseconds. 
+									* preferred_accuracy represents the requested fix accuracy in meters. 
+									* preferred_time represents the requested time to first fix in milliseconds. 
+									*/  
+			const void* (*get_extension)(const char* name);  /** Get a pointer to extension information. 自定义的接口*/  
+		} GpsInterface;  
+
+
+gps_device_t
+ 		//GPS设备结构体，继承自hw_device_tcommon，硬件适配接口，向上层提供了重要的get_gps_interface接口。
+
+		struct gps_device_t {  
+			struct hw_device_t common; 
+			const GpsInterface* (*get_gps_interface)(struct gps_device_t* dev); /** Set the provided lights to the provided values. 
+												Returns: 0 on succes, error code on failure. */  
+		};  
+
+
+--------------------------
+1.2 HAL层(硬件适配层)
+--------------------------
+GPS硬件适配层的源码位于：hardware/[vendor]/gps 目录下。 看gps/loc_api/llibloc_api/gps.c，首先定义了gps设备模块实例：
+
+    const struct hw_module_t HAL_MODULE_INFO_SYM = {  
+        .tag = HARDWARE_MODULE_TAG,  
+        .version_major = 1,  
+        .version_minor = 0,  
+        .id = GPS_HARDWARE_MODULE_ID,  
+        .name = "loc_api GPS Module",  
+        .author = "Qualcomm USA, Inc.",  
+        .methods = &gps_module_methods,  
+    };  
+
+这里的methods指向gps.c文件中的gps_module_methods:
+
+	    static struct hw_module_methods_t gps_module_methods = {  
+		.open = open_gps  
+	    };  
+
+gps_module_methods定义了设备的open函数open_gps，看open_gps函数：
+
+		在使用设备前, 必须执行此函数。
+		在它里面初始化了  
+				hw_device_t  的 .module            成员，以及 
+				gps_device_t 的 .get_gps_interface 成员。             
+		---------------------------------------------------------------------------------------------------------- open_gps()作用结束。
+
+		初始化好了，上层()就可以通过 gps_device_t 的 get_gps_interface(), 调用gps__get_gps_interface()。 
+	
+	    static int open_gps(const struct hw_module_t* module, char const* name, struct hw_device_t** device)  
+	    {  
+		struct gps_device_t *dev = malloc(sizeof(struct gps_device_t)); 	//
+		memset(dev, 0, sizeof(*dev));  
+
+		dev->common.tag = HARDWARE_DEVICE_TAG;  
+		dev->common.version = 0;  
+		dev->common.module = (struct hw_module_t*)module; 	// 
+		dev->get_gps_interface = gps__get_gps_interface; 	//
+	      
+		*device = (struct hw_device_t*)dev;  
+		return 0;  
+	    }  
+
+gps__get_gps_interface()定义如下：
+	    const GpsInterface* gps__get_gps_interface(struct gps_device_t* dev)  
+	    {  
+			return get_gps_interface();  //内部return &sLocEngInterface;
+	    }  
+
+		此函数返回了gps/loc_eng.cpp文件的 sLocEngInterface 变量，
+		---------------------------------------------------------------- 也就是上层要首先拿到了这个( GpsInterface 的实例)。
+		sLocEngInterface定义如下：
+		    // Defines the GpsInterface in gps.h  
+		    static const GpsInterface sLocEngInterface =  
+		    {  
+			sizeof(GpsInterface),  
+			loc_eng_init,  
+			loc_eng_start,  
+			loc_eng_stop,  
+			loc_eng_cleanup,  
+			loc_eng_inject_time,  
+			loc_eng_inject_location,  
+			loc_eng_delete_aiding_data,  
+			loc_eng_set_position_mode,  
+			loc_eng_get_extension,  
+		    };  
+
+		sLocEngInterface( GpsInterface 的实例)指定了GpsInterface结构的各个回调函数，如启动定位/取消定位等，
+		这些回调函数的实现均在loc_eng.cpp中实现
+		
+		(自己的HAL里也需要实现这些interface了)。
+
+
+
+
+
+--------------------------
+1.3 JNI适配层 (也需要实现？)
+--------------------------
+
+ 		GPS JNI适配层的源码位于：frameworks/base/services/jni/com_android_server_location_GpsLocationProvider.cpp
+			
+		    首先看注册JNI方法的函数定义：
+		    int register_android_server_location_GpsLocationProvider(JNIEnv* env)  
+		    {
+			//跟其他module的JNI方法注册一样了
+			return jniRegisterNativeMethods(env, "com/android/server/location/GpsLocationProvider", sMethods, NELEM(sMethods));  //注意第三个参数
+		    }  
+
+
+			此函数被同目录下onload.cpp文件调用，调用地方在：
+
+		    extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved)  
+		    {  
+			JNIEnv* env = NULL;  
+			jint result = -1;  
+		      
+			if (vm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {  
+			    LOGE("GetEnv failed!");  
+			    return result;  
+			}  
+			LOG_ASSERT(env, "Could not retrieve the env!");  
+			...  
+			...  
+			register_android_server_location_GpsLocationProvider(env);  
+		      
+			return JNI_VERSION_1_4;  
+		    }  
+			----------------------------------------------JNI初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。
+
+
+回到JNI方法注册函数 register_android_server_location_GpsLocationProvider()函数，变量sMethods[]定义如下：
+
+
+    static JNINativeMethod sMethods[] = {  
+         /* name,                                signature(签名),                                   funcPtr */
+  
+        {"class_init_native",			"()V", 				(void*)android_location_GpsLocationProvider_class_init_native},  
+        {"native_is_supported",			"()Z", 				(void*)android_location_GpsLocationProvider_is_supported},  
+        {"native_init",				"()Z", 				(void*)android_location_GpsLocationProvider_init},  
+        {"native_cleanup",			"()V", 				(void*)android_location_GpsLocationProvider_cleanup},  
+        {"native_set_position_mode",		"(IIIII)Z",			(void*)android_location_GpsLocationProvider_set_position_mode},  
+        {"native_start",			"()Z",				(void*)android_location_GpsLocationProvider_start},  
+        {"native_stop",				"()Z",				(void*)android_location_GpsLocationProvider_stop},  
+        {"native_delete_aiding_data",		"(I)V",				(void*)android_location_GpsLocationProvider_delete_aiding_data},  
+        {"native_read_sv_status",		"([I[F[F[F[I)I",		(void*)android_location_GpsLocationProvider_read_sv_status},  
+        {"native_read_nmea",			"([BI)I",			(void*)android_location_GpsLocationProvider_read_nmea},  
+        {"native_inject_time",			"(JJI)V",			(void*)android_location_GpsLocationProvider_inject_time},  
+        {"native_inject_location",		"(DDF)V",			(void*)android_location_GpsLocationProvider_inject_location},  
+        {"native_supports_xtra",		"()Z",				(void*)android_location_GpsLocationProvider_supports_xtra},  
+        {"native_inject_xtra_data",		"([BI)V",			(void*)android_location_GpsLocationProvider_inject_xtra_data},  
+        {"native_agps_data_conn_open",		"(Ljava/lang/String;)V",	(void*)android_location_GpsLocationProvider_agps_data_conn_open},  
+        {"native_agps_data_conn_closed", 	"()V",				(void*)android_location_GpsLocationProvider_agps_data_conn_closed},  
+        {"native_agps_data_conn_failed", 	"()V",				(void*)android_location_GpsLocationProvider_agps_data_conn_failed},  
+        {"native_agps_set_id", 			"(ILjava/lang/String;)V",	(void*)android_location_GpsLocationProvider_agps_set_id},  
+        {"native_agps_set_ref_location_cellid", "(IIIII)V",			(void*)android_location_GpsLocationProvider_agps_set_reference_location_cellid},  
+        {"native_set_agps_server", 		"(ILjava/lang/String;I)V",	(void*)android_location_GpsLocationProvider_set_agps_server},  
+        {"native_send_ni_response",		"(II)V",			(void*)android_location_GpsLocationProvider_send_ni_response},  
+        {"native_agps_ni_message",		"([BI)V",			(void*)android_location_GpsLocationProvider_agps_send_ni_message},  
+        {"native_get_internal_state",		"()Ljava/lang/String;",		(void*)android_location_GpsLocationProvider_get_internal_state},  
+        {"native_update_network_state",		"(ZIZLjava/lang/String;)V",	(void*)android_location_GpsLocationProvider_update_network_state },  
+    };  
+
+
+	sMetthods[]定义了[GPS所有向上层提供的JNI本地方法]，
+	这些本地方法又是如何与硬件适配层(HAL)交互的？ 看其中一个本地方法 android_location_GpsLocationProvider_start()
+
+		    static jboolean android_location_GpsLocationProvider_start(JNIEnv* env, jobject obj)  
+		    {  
+			const GpsInterface* interface = GetGpsInterface(env, obj);  	//拿到了GpsInterface实体!
+			if (interface)  
+			    return (interface->start() == 0);  				//loc_enc_start()
+			else  
+			    return false;  
+		    }  
+
+	它调用了GetGpsInterface()获得GpsInterface实体地址，然后直接调用该接口的start回调函数。GetGpsInterface方法定义如下：
+
+			    static const GpsInterface* GetGpsInterface(JNIEnv* env, jobject obj) {  
+				// this must be set before calling into the HAL library  
+				if (!mCallbacksObj)  
+				    mCallbacksObj = env->NewGlobalRef(obj);  
+			      
+				if (!sGpsInterface) {  
+				    sGpsInterface = get_gps_interface();  
+				    if (!sGpsInterface || sGpsInterface->init(&sGpsCallbacks) != 0) {  
+					sGpsInterface = NULL;  
+					return NULL;  
+				    }  
+				}  
+				return sGpsInterface; 
+			    }
+
+	这个函返回了sGpsInterface，而sGpsInterface又是从get_gps_interface()获得的，继续查看get_gps_interface()函数的实现：
+
+		    static const GpsInterface* get_gps_interface() {  
+			int err;  
+			hw_module_t* module;  
+			const GpsInterface* interface = NULL;
+			......................................................................................................................
+			err = hw_get_module(GPS_HARDWARE_MODULE_ID, (hw_module_t const**)&module);  				//.so load!!!
+			......................................................................................................................
+			if (err == 0) {  
+			    hw_device_t* device;  
+			    .................................................................................................................
+			    err = module->methods->open(module, GPS_HARDWARE_MODULE_ID, &device);  				//open!!!
+			    .................................................................................................................
+			    if (err == 0) {  
+				gps_device_t* gps_device = (gps_device_t *)device;  
+				interface = gps_device->get_gps_interface(gps_device);  
+			    }  
+			}  
+		      
+			return interface;  
+		    }  
+
+这里面调用hw_get_module()加载硬件适配模块.so文件，
+接着通过hw_device_t接口调用open()函数，实际执行gps/loc_api/llibloc_api/gps.c定义的open_gps函数，
+而后调用gps_device_t接口的get_gps_interface函数，此函数也是在gps.c中定义的，
+======================================================================================================================================================
+最后返回硬件适配层中loc_eng.cpp文件的sLocEngInterface，从而打通了上层到底层的通道。
+======================================================================================================================================================
+
+//稍微总结
+jboolean android_location_GpsLocationProvider_xxxxxx(JNIEnv* env, jobject obj) 		//JNINativeMethod sMethods[].xxxx function
+	--->GetGpsInterface(JNIEnv* env, jobject obj) 
+		--->get_gps_interface()
+			--->hw_get_module(GPS_HARDWARE_MODULE_ID, (hw_module_t const**)&module); //load the .so!
+			--->module->methods->open(module, GPS_HARDWARE_MODULE_ID, &device); 
+				--->hal gps_open()
+
+到此，HAL层，JNI层的分析结束。
+

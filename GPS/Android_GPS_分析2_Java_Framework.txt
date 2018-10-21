@@ -1,0 +1,662 @@
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+2. Java Framework
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+ 
+
+GPSFramework源码位于：frameworks/base/location
+2.1接口和类简介
+
+首先对GPSFramework重要的接口和类作一个简单的介绍
+
+    接口
+
+
+
+GpsStatus.Listener
+	
+
+用于当Gps状态发生变化时接收通知
+
+GpsStatus.NmeaListener
+	
+
+用于接收Gps的NMEA数据
+
+LocationListener
+	
+
+用于接收当位置信息发生变化时，LocationManager发出的通知
+
+    类
+
+
+
+Address
+	
+
+地址信息类
+
+Criteria
+	
+
+用于根据设备情况动态选择provider
+
+Geocoder
+	
+
+用于处理地理编码信息
+
+GpsSatellite
+	
+
+用于获取当前卫星状态
+
+GpsStatus
+	
+
+用于获取当前Gps状态
+
+Location
+	
+
+地理位置信息类
+
+LocationManager
+	
+
+用于获取和操作gps系统服务
+
+LocationProvider
+	
+
+抽象类，用于提供位置提供者（Locationprovider）
+
+
+
+2.3.2 使用Gps编程接口
+
+下面，我们用一个代码示例说明如何在应用层写一个简单的gps程序。
+
+    首先在AndroidManifest.xml中添加位置服务权限:
+
+
+    <uses-permission android:name="android.permission.INTERNET" />     
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />     
+    <uses-permission android:name="android.permission.ACCESS_FIND_LOCATION" />    
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"></uses-permission>    
+
+
+    接着获取位置信息：
+
+
+            //获取位置服务  
+     LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);    
+           Criteria criteria = new Criteria();    
+           // 获得最好的定位效果    
+           criteria.setAccuracy(Criteria.ACCURACY_FINE);  //设置为最大精度  
+           criteria.setAltitudeRequired(false);  //不获取海拔信息  
+           criteria.setBearingRequired(false);  //不获取方位信息  
+           criteria.setCostAllowed(false);  //是否允许付费  
+           criteria.setPowerRequirement(Criteria.POWER_LOW);  // 使用省电模式  
+           // 获得当前的位置提供者    
+           String provider = locationManager.getBestProvider(criteria, true);    
+           // 获得当前的位置    
+           Location location = locationManager.getLastKnownLocation(provider);    
+    Geocoder gc = new Geocoder(this);     
+           List<Address> addresses = null;    
+           try {  
+        //根据经纬度获得地址信息    
+               addresses = gc.getFromLocation(location.getLatitude(), location.getLongitude(), 1);    
+           } catch (IOException e) {    
+               e.printStackTrace();    
+           } if (addresses.size() > 0) {  
+    //获取address类的成员信息  
+    Sring msg = “”;     
+           msg += "AddressLine：" + addresses.get(0).getAddressLine(0)+ "\n";     
+           msg += "CountryName：" + addresses.get(0).getCountryName()+ "\n";     
+           msg += "Locality：" + addresses.get(0).getLocality() + "\n";     
+           msg += "FeatureName：" + addresses.get(0).getFeatureName();     
+           }     
+
+
+    设置侦听，当位置信息发生变化时，自动更新相关信息
+
+
+          //匿名类，继承自LocationListener接口  
+    private final LocationListener locationListener = new LocationListener() {  
+               public void onLocationChanged(Location location) {  
+               updateWithNewLocation(location);//更新位置信息  
+               }  
+               public void onProviderDisabled(String provider){  
+               updateWithNewLocation(null);//更新位置信息  
+               }  
+               public void onProviderEnabled(String provider){ }  
+               public void onStatusChanged(String provider, int status,Bundle extras){ }  
+       };  
+    //更新位置信息  
+    private void updateWithNewLocation(Location location) {  
+             
+      
+               if (location != null) {  
+        //获取经纬度  
+               double lat = location.getLatitude();  
+               double lng = location.getLongitude();  
+       }  
+    //添加侦听  
+     locationManager.requestLocationUpdates(provider, 2000, 10,locationListener);  
+
+
+
+ 
+2.3.3接口和类分析
+
+ 
+
+下面对相关的类或接口进行分析，LocationManager的代码文件位于：frameworks/base/location/java/location/LocationManager.java 
+
+我们看其构造函数：
+
+    public LocationManager(ILocationManager service) {  
+            mService = service;  
+        }  
+
+
+其中mService为ILocationManager接口类型，构造函数的参数为service，外部调用时传入LocationManagerService实例。LocationManager是android系统的gps位置信息系统服务，在稍后将会对其进行分析。由带参构造函数实例化LocationManager类的方式用得不多，一般用的方式是由getSystemService获得LocationManagerService服务，再强制转换为LocationManager。例如在2.3.2中的代码示例中是这样获取gps服务的：
+
+    LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);    
+
+
+这里的Context.LOCATION_SERVICE为”location”，标识gps服务。
+
+LocationManagerService服务是整个GpsFramework的核心，首先看它是如何加载的，代码文件位于：frameworks/base/services/java/com/android/server/systemserver.java
+
+ 
+
+    …//省略其他代码  
+    LocationManagerService location = null;  
+    …//省略其他代码  
+    try {  
+                    Slog.i(TAG, "Location Manager");  
+                    location = new LocationManagerService(context);  
+                    ServiceManager.addService(Context.LOCATION_SERVICE, location);  
+                } catch (Throwable e) {  
+                    Slog.e(TAG, "Failure starting Location Manager", e);  
+                }  
+
+
+ 
+
+此处向ServiceManger系统服务管理器注册了新的服务，其名称为”location”，类型为LocationManagerService。注册此服务后，Java应用程序可通过ServiceManager获得LocationManagerService的代理接口ILocationManager.Stub，从而调用LocationManagerService提供的接口函数。ILocationManager位于：
+
+frameworks/base/location/java/location/ILocationManager.aidl，其代码如下：
+
+    /** 
+     * System private API for talking with the location service. 
+     * 
+     * {@hide} 
+     */  
+    interface ILocationManager  
+    {  
+        List<String> getAllProviders();  
+        List<String> getProviders(in Criteria criteria, boolean enabledOnly);  
+        String getBestProvider(in Criteria criteria, boolean enabledOnly);  
+        boolean providerMeetsCriteria(String provider, in Criteria criteria);  
+      
+        void requestLocationUpdates(String provider, in Criteria criteria, long minTime, float minDistance,  
+            boolean singleShot, in ILocationListener listener);  
+        void requestLocationUpdatesPI(String provider, in Criteria criteria, long minTime, float minDistance,  
+            boolean singleShot, in PendingIntent intent);  
+        void removeUpdates(in ILocationListener listener);  
+        void removeUpdatesPI(in PendingIntent intent);  
+      
+        boolean addGpsStatusListener(IGpsStatusListener listener);  
+        void removeGpsStatusListener(IGpsStatusListener listener);  
+      
+        // for reporting callback completion  
+        void locationCallbackFinished(ILocationListener listener);  
+      
+        boolean sendExtraCommand(String provider, String command, inout Bundle extras);  
+      
+        void addProximityAlert(double latitude, double longitude, float distance,  
+            long expiration, in PendingIntent intent);  
+        void removeProximityAlert(in PendingIntent intent);  
+      
+        Bundle getProviderInfo(String provider);  
+        boolean isProviderEnabled(String provider);  
+      
+        Location getLastKnownLocation(String provider);  
+      
+        // Used by location providers to tell the location manager when it has a new location.  
+        // Passive is true if the location is coming from the passive provider, in which case  
+        // it need not be shared with other providers.  
+        void reportLocation(in Location location, boolean passive);  
+      
+        boolean geocoderIsPresent();  
+        String getFromLocation(double latitude, double longitude, int maxResults,  
+            in GeocoderParams params, out List<Address> addrs);  
+        String getFromLocationName(String locationName,  
+            double lowerLeftLatitude, double lowerLeftLongitude,  
+            double upperRightLatitude, double upperRightLongitude, int maxResults,  
+            in GeocoderParams params, out List<Address> addrs);  
+      
+        void addTestProvider(String name, boolean requiresNetwork, boolean requiresSatellite,  
+            boolean requiresCell, boolean hasMonetaryCost, boolean supportsAltitude,  
+            boolean supportsSpeed, boolean supportsBearing, int powerRequirement, int accuracy);  
+        void removeTestProvider(String provider);  
+        void setTestProviderLocation(String provider, in Location loc);  
+        void clearTestProviderLocation(String provider);  
+        void setTestProviderEnabled(String provider, boolean enabled);  
+        void clearTestProviderEnabled(String provider);  
+        void setTestProviderStatus(String provider, int status, in Bundle extras, long updateTime);  
+        void clearTestProviderStatus(String provider);  
+      
+        // for NI support  
+        boolean sendNiResponse(int notifId, int userResponse);  
+    }  
+
+
+android系统通过ILocationManager.aidl文件自动生成IlocationManager.Stub代理接口，在Java客户端获取LocationManagerService的方式如下：
+
+    ILocationManager mLocationManager;  
+    IBinder b = ServiceManager.getService(Context.LOCATION_SERVICE);  
+    mLocationManager = IlocationManager.Stub.asInterface(b);  
+
+
+客户端通过mLocationManager即可操作LocationMangerService继承自ILocationManager.Stub的的公共接口。之前提到了通过getSystemSerivice方式也可以获得LocationManagerService，但getSystemService()返回的是Object，必须转换为其他接口，我们可以看到之前的是强制转换为LocationManager类型，而此处由ServiceManager.getService返回IBinder接口，再通过ILocationManager.Stub转换为ILocationManager类型，是更加规范的做法。
+
+LocationMangerService的代码文件位于：
+
+frameworks/base/services/java/com/android/server/LocationMangerService.java
+
+我们首先看其中的systemReady()函数
+
+    void systemReady() {  
+            // we defer starting up the service until the system is ready   
+            Thread thread = new Thread(null, this, "LocationManagerService");  
+            thread.start();  
+        }  
+
+
+此处启动自身服务线程，因LocationMangerService继承自Runnable接口，当启动此线程后，会执行继承自Runnable接口的run()函数，我们看run()函数的定义：
+
+    public void run()  
+        {  
+            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);  
+            Looper.prepare();  
+            mLocationHandler = new LocationWorkerHandler();  
+            initialize();  
+            Looper.loop();  
+        }  
+
+
+此处调用了initialize()进行初始化，initialize()函数定义如下：
+
+    private void initialize() {  
+           //...省略其他代码  
+            loadProviders();  
+          
+        //...省略其他代码  
+              
+        }  
+
+
+此处调用了loadProviders()函数，loadProviders()函数调用了_loadProvidersLocked()，其代码如下：
+
+    private void _loadProvidersLocked() {  
+            // Attempt to load "real" providers first  
+            if (GpsLocationProvider.isSupported()) {  
+                // Create a gps location provider  
+                GpsLocationProvider gpsProvider = new GpsLocationProvider(mContext, this);  
+                mGpsStatusProvider = gpsProvider.getGpsStatusProvider();  
+                mNetInitiatedListener = gpsProvider.getNetInitiatedListener();  
+                addProvider(gpsProvider);  
+                mGpsLocationProvider = gpsProvider;  
+            }  
+      
+            // create a passive location provider, which is always enabled  
+            PassiveProvider passiveProvider = new PassiveProvider(this);  
+            addProvider(passiveProvider);  
+            mEnabledProviders.add(passiveProvider.getName());  
+      
+            // initialize external network location and geocoder services  
+            if (mNetworkLocationProviderPackageName != null) {  
+                mNetworkLocationProvider =  
+                    new LocationProviderProxy(mContext, LocationManager.NETWORK_PROVIDER,  
+                            mNetworkLocationProviderPackageName, mLocationHandler);  
+                addProvider(mNetworkLocationProvider);  
+            }  
+      
+            if (mGeocodeProviderPackageName != null) {  
+                mGeocodeProvider = new GeocoderProxy(mContext, mGeocodeProviderPackageName);  
+            }  
+      
+            updateProvidersLocked();  
+        }  
+
+ 
+
+在这里对GpsLocationProvider和NetworkLocationProvider类作了初始化，并添加到provider集合中。GpsLocationProvider和NetworkLocationProvider继承自LocationProviderInterface接口，分别代表两种位置提供者(LocationProvider)：
+
+（1）LocationManager.GPS_PROVIDER：GPS模式，精度比较高，但是慢而且消耗电力，而且可能因为天气原因或者障碍物而无法获取卫星信息，另外设备可能没有GPS模块（2）LocationManager.NETWORK_PROVIDER：通过网络获取定位信息，精度低，耗电少，获取信息速度较快，不依赖GPS模块。
+
+ 
+
+Android提供criteria类，可根据当前设备情况动态选择位置提供者。我们在之前2.3.2的代码示例中，有这样一句代码：
+
+    // 获得当前的位置提供者    
+    String provider = locationManager.getBestProvider(criteria, true);    
+
+
+getBestProvider其实是根据Criteria的条件遍历mProviders集合，返回符合条件的provider名称。我们再看GpsLocationProvider的实现，其代码文件位于：
+
+frameworks/base/services/java/com/android/server/location/GpsLocationProvider.java
+
+在GpsLocationProvider的构造函数中：
+
+    public GpsLocationProvider(Context context, ILocationManager locationManager) {  
+             
+        //...省略部分代码  
+            IntentFilter intentFilter = new IntentFilter();  
+            intentFilter.addAction(Intents.DATA_SMS_RECEIVED_ACTION);  
+            intentFilter.addDataScheme("sms");  
+            intentFilter.addDataAuthority("localhost","7275");  
+            context.registerReceiver(mBroadcastReciever, intentFilter);  
+      
+            intentFilter = new IntentFilter();  
+            intentFilter.addAction(Intents.WAP_PUSH_RECEIVED_ACTION);  
+            try {  
+                intentFilter.addDataType("application/vnd.omaloc-supl-init");  
+            } catch (IntentFilter.MalformedMimeTypeException e) {  
+                Log.w(TAG, "Malformed SUPL init mime type");  
+            }  
+            context.registerReceiver(mBroadcastReciever, intentFilter);  
+      
+              
+            //...省略部分代码  
+            // wait until we are fully initialized before returning  
+            mThread = new GpsLocationProviderThread();  
+            mThread.start();  
+            while (true) {  
+                try {  
+                    mInitializedLatch.await();  
+                    break;  
+                } catch (InterruptedException e) {  
+                    Thread.currentThread().interrupt();  
+                }  
+            }  
+        }  
+
+
+这里注册了广播接受者mBroadcastReciever，用于接收广播消息，消息过滤在intentFilter中定义。下面看它接收广播消息时的动作：
+
+    private final BroadcastReceiver mBroadcastReciever = new BroadcastReceiver() {  
+            @Override public void onReceive(Context context, Intent intent) {  
+                String action = intent.getAction();  
+      
+                if (action.equals(ALARM_WAKEUP)) {  
+                    if (DEBUG) Log.d(TAG, "ALARM_WAKEUP");  
+                    startNavigating(false);  
+                } else if (action.equals(ALARM_TIMEOUT)) {  
+                    if (DEBUG) Log.d(TAG, "ALARM_TIMEOUT");  
+                    hibernate();  
+                } else if (action.equals(Intents.DATA_SMS_RECEIVED_ACTION)) {  
+                    checkSmsSuplInit(intent);  
+                } else if (action.equals(Intents.WAP_PUSH_RECEIVED_ACTION)) {  
+                    checkWapSuplInit(intent);  
+                 }  
+            }  
+        };  
+
+
+当接收ALARM_EAKEUP时，执行startNavigating函数，当接收到ALARM_TIMEOUT广播时，执行hibernate函数。这两个函数很关键，下面看他们的实现：
+
+    private void startNavigating(boolean singleShot) {  
+              
+            //...省略部分代码  
+                  
+                if (!native_set_position_mode(mPositionMode, GPS_POSITION_RECURRENCE_PERIODIC,  
+                        interval, 0, 0)) {  
+                    mStarted = false;  
+                    Log.e(TAG, "set_position_mode failed in startNavigating()");  
+                    return;  
+                }  
+                if (!native_start()) {  
+                    mStarted = false;  
+                    Log.e(TAG, "native_start failed in startNavigating()");  
+                    return;  
+                }  
+            //...省略部分代码  
+        }  
+
+
+看到没有，这里调用了native_set_position_mode和native_start方法，而这些方法正是我们之前在JNI适配层提到的注册的本地方法。同样的，hibernate函数调用了JNI提供的native_stop方法。我们再看GpsLocationProvider的内部私有函数：
+
+ 
+
+ 
+
+ 
+
+可以看到所有这些本地方法，都是在JNI层注册的，GpsLocationProvider类是从JNI层到Framework层的通道。
+
+下面回到LocationManagerService，分析如何获取最新的位置信息(Location)，获取最新的location的函数是getLastKnownLocation，其实现如下：
+
+    private Location _getLastKnownLocationLocked(String provider) {  
+            checkPermissionsSafe(provider);  
+      
+            LocationProviderInterface p = mProvidersByName.get(provider);  
+            if (p == null) {  
+                return null;  
+            }  
+      
+            if (!isAllowedBySettingsLocked(provider)) {  
+                return null;  
+            }  
+      
+            return mLastKnownLocation.get(provider);  
+        }  
+
+
+这里mLastKnownLocation类型为HashMap<String,Location>，所以mLastKnownLocation.get(provider)表示通过provider的名称在哈希字典中获取相应的location，那么这些location是什么时候被存入到哈希字典中的呢？
+
+我们回到LocationManagerService的run函数：
+
+    public void run()  
+        {  
+            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);  
+            Looper.prepare();  
+            mLocationHandler = new LocationWorkerHandler();  
+            initialize();  
+            Looper.loop();  
+        }  
+
+
+这里对类型为LocationWorkerHandler的变量进行初始化，LocationWorkerHandler是在LocationManagerService的一个内部类，它继承自Handler类，Handler是Android系统用于应用程序内部通信的组件，内部通信指同个进程的主线程与其他线程间的通信，Handler通过Message或Runnable对象进行通信。我们继续看LocationWorkerHandler的实现：
+
+    private class LocationWorkerHandler extends Handler {  
+      
+            @Override  
+            public void handleMessage(Message msg) {  
+                try {  
+                    if (msg.what == MESSAGE_LOCATION_CHANGED) {  
+                        // log("LocationWorkerHandler: MESSAGE_LOCATION_CHANGED!");  
+      
+                        synchronized (mLock) {  
+                            Location location = (Location) msg.obj;  
+                            String provider = location.getProvider();  
+                            boolean passive = (msg.arg1 == 1);  
+      
+                            if (!passive) {  
+                                // notify other providers of the new location  
+                                for (int i = mProviders.size() - 1; i >= 0; i--) {  
+                                    LocationProviderInterface p = mProviders.get(i);  
+                                    if (!provider.equals(p.getName())) {  
+                                        p.updateLocation(location);  
+                                    }  
+                                }  
+                            }  
+      
+                            if (isAllowedBySettingsLocked(provider)) {  
+                                handleLocationChangedLocked(location, passive);  
+                            }  
+                        }  
+                    } else if (msg.what == MESSAGE_PACKAGE_UPDATED) {  
+                        //...省略部分代码  
+                        }  
+                    }  
+                } catch (Exception e) {  
+                    // Log, don't crash!  
+                    Slog.e(TAG, "Exception in LocationWorkerHandler.handleMessage:", e);  
+                }  
+            }  
+        }  
+
+
+这里重写Handle类的handleMessage方法，处理用Handle接收的Message对象消息。当接受到位置信息变化的消息MESSAGE_LOCATION_CHANGED时，调用p.updateLocationhandleLocationChangedLocked方法，其实现如下：
+
+    private void handleLocationChangedLocked(Location location, boolean passive) {  
+           //...省略部分代码  
+      
+            // Update last known location for provider  
+            Location lastLocation = mLastKnownLocation.get(provider);  
+            if (lastLocation == null) {  
+                mLastKnownLocation.put(provider, new Location(location));  
+            } else {  
+                lastLocation.set(location);  
+            }  
+        //...省略部分代码  
+    }  
+
+
+可以看到是在handleLocationChangedLocked函数中实现对lastknownlocation的更新的，那么在LocationWorkerHandler类中处理的MESSAGE_LOCATION_CHANGED消息是谁发送出来的呢？答案是在LocationManagerService类的reportLocation函数中：
+
+    public void reportLocation(Location location, boolean passive) {  
+            if (mContext.checkCallingOrSelfPermission(INSTALL_LOCATION_PROVIDER)  
+                    != PackageManager.PERMISSION_GRANTED) {  
+                throw new SecurityException("Requires INSTALL_LOCATION_PROVIDER permission");  
+            }  
+      
+            mLocationHandler.removeMessages(MESSAGE_LOCATION_CHANGED, location);  
+            Message m = Message.obtain(mLocationHandler, MESSAGE_LOCATION_CHANGED, location);  
+            m.arg1 = (passive ? 1 : 0);  
+            mLocationHandler.sendMessageAtFrontOfQueue(m);  
+        }  
+
+
+此处构造了新的Message对象，然后发送到消息队列的首位置。在GpsLocationProvider类的reportLocation函数中，有这样一段代码：
+
+    try     {  
+                    mLocationManager.reportLocation(mLocation, false);  
+                } catch (RemoteException e) {  
+                    Log.e(TAG, "RemoteException calling reportLocation");  
+               }  
+
+
+所以实际是由GpsLocationProvider主动调用LocationManagerService的reportLocation方法，从而更新最新的位置信息。
+
+实际上，GpsLocationoProvider的reportLocation对应了硬件适配层中的GpsCallbacks结构体中的回调函数gps_location_callback
+
+    /** Callback with location information. 向上层传递GPS位置信息 
+     *  Can only be called from a thread created by create_thread_cb. 
+     */  
+    typedef void (* gps_location_callback)(GpsLocation* location);  
+
+ 
+
+那么GpsLocationProvider中的reportLocation函数是如何与GpsCallbacks的gps_location_callback挂钩的呢？我们回到JNI适配层的代码文件：
+
+frameworks/base/services/jni/com_android_server_location_GpsLocationProvider.cpp
+
+其中定义的GetGpsInterface函数：
+
+    static const GpsInterface* GetGpsInterface(JNIEnv* env, jobject obj) {  
+        // this must be set before calling into the HAL library  
+        if (!mCallbacksObj)  
+            mCallbacksObj = env->NewGlobalRef(obj);  
+      
+        if (!sGpsInterface) {  
+            sGpsInterface = get_gps_interface();  
+            if (!sGpsInterface || sGpsInterface->init(&sGpsCallbacks) != 0) {  
+                sGpsInterface = NULL;  
+                return NULL;  
+            }  
+        }  
+        return sGpsInterface;  
+    }  
+
+
+这里面的sGpsInterface->init(&sGpsCallbacks)调用了GpsInterface的init回调函数，即初始化GpsCallbacks结构体变量sGpsCallbacks，sGpsCallbacks定义如下：
+
+    GpsCallbacks sGpsCallbacks = {  
+        sizeof(GpsCallbacks),  
+        location_callback,  
+        status_callback,  
+        sv_status_callback,  
+        nmea_callback,  
+        set_capabilities_callback,  
+        acquire_wakelock_callback,  
+        release_wakelock_callback,  
+        create_thread_callback,  
+    };  
+
+
+我们再次看GpsCallbacks的定义（其代码文件在硬件适配层的头文件gps.h中）：
+
+    typedef struct {  
+        size_t      size;  
+        gps_location_callback location_cb;  
+        gps_status_callback status_cb;  
+        gps_sv_status_callback sv_status_cb;  
+        gps_nmea_callback nmea_cb;  
+        gps_set_capabilities set_capabilities_cb;  
+        gps_acquire_wakelock acquire_wakelock_cb;  
+        gps_release_wakelock release_wakelock_cb;  
+        gps_create_thread create_thread_cb;  
+    } GpsCallbacks;  
+
+
+比较sGpsCallbacks与GpsCallbacks，可以看到location_callback与gps_location_callback对应。再看location_callback函数的定义：
+
+    static void location_callback(GpsLocation* location)  
+    {  
+        JNIEnv* env = AndroidRuntime::getJNIEnv();  
+        env->CallVoidMethod(mCallbacksObj, method_reportLocation, location->flags,  
+                (jdouble)location->latitude, (jdouble)location->longitude,  
+                (jdouble)location->altitude,  
+                (jfloat)location->speed, (jfloat)location->bearing,  
+                (jfloat)location->accuracy, (jlong)location->timestamp);  
+        checkAndClearExceptionFromCallback(env, __FUNCTION__);  
+    }  
+
+
+这里面利用JNI调用了Java语言的方法method_reportLocation，method_reportLocation是一个jmethodID变量，表示一个由Java语言定义的方法。下面我们看method_reportLocation的赋值代码：
+
+    static void android_location_GpsLocationProvider_class_init_native(JNIEnv* env, jclass clazz) {  
+        method_reportLocation = env->GetMethodID(clazz, "reportLocation", "(IDDDFFFJ)V");  
+        //...省略部分代码  
+    }  
+
+
+这里表示method_reportLocation指向Java类clazz里的方法reportLocation，那么这个Java类clazz是不是表示GpsLocationProvider呢？我们找到注册JNI方法的方法表：
+
+    tatic JNINativeMethod sMethods[] = {  
+         /* name, signature, funcPtr */  
+        {"class_init_native", "()V", (void *)android_location_GpsLocationProvider_class_init_native},  
+        //...省略部分代码  
+    }  
+
+
+这里说明_GpsLocationProvider_class_init_native对应的native方法名称是class_init_native，下面我们只要确定在Java中的某个类A调用了class_init_native方法，即可以说明A类的reportLocation函数是GpsCallbacks的回调函数。
+
+我们回到GpsLocationProvider的代码文件：
+
+frameworks/base/services/java/com/android/server/location/GpsLocationProvider.java
+
+其中有一段代码：
+
+    static { class_init_native(); }  
+
+
+说明是在GpsLocationProvider中调用了class_init_native方法，从而说明GpsLocationProvider的reportLocation函数是GpsCallbacks的回调函数，即当Gps设备的位置信息发生变化时，它调用GpsLocationProvider的回调函数reportLocation，继而调用LocationManagerService的reportLocation函数，从而更新应用层的位置信息。
