@@ -9,6 +9,15 @@ sepolicy是[所有的策略语言]编译之后生成的二进制文件，最终�
 那么如何将[所有的策略语言]编译成sepolicy ?
 
 
+-----------------
+注意：
+-----------------
+
+file_contexts, seapp_contexts, property_contexts 都是android 特有的策略文件;
+checkfc,以及checkseap 是编译android 策略文件时，使用的检测工具，看是否有规则不符合；
+
+
+
 
 ------------------------------------------------------
 一：编译
@@ -68,8 +77,4 @@ echo "Install: out/target/product/elite1000/root/property_contexts"
 mkdir -p out/target/product/elite1000/root/
 out/host/linux-x86/bin/acp -fp out/target/product/elite1000/obj/ETC/property_contexts_intermediates/property_contexts out/target/product/elite1000/root/property_contexts
 
-------------------------------------------------------
-TIP: 
-------------------------------------------------------
-file_contexts, seapp_contexts, property_contexts 都是android 特有的策略文件;
-checkfc,以及checkseap 是编译android 策略文件时，使用的检测工具，看是否有规则不符合；
+
