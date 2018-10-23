@@ -1,0 +1,155 @@
+Android笔记_GPS_HAL实现
+
+HAL的全称是Hardware Abstraction Layer, 即硬件抽象层。
+HAL层是介于Android内核与上层之间抽象出来的一层结构，它是对linux驱动的一个封装，对上层提供统一接口，上层应用不必知道下层是如何实现的，
+它屏蔽了底层的实现细节。
+
+
+1. HAL的由来:
+        Android的HAL是为了保护一些硬件提供商的知识产权而提出的，是为了避开linux的GPL束缚。
+        思路是把控制硬件的动作都放到了Android HAL中，而linux driver仅仅完成一些简单的数据交互作用，甚至把硬件寄存器空间直接映射到user space。
+        而Android是基于Aparch的license，因此硬件厂商可以只提供二进制代码，所以说Android只是一个开放的平台，并不是一个开源的平台。
+        
+        也许也正是因为Android不遵从GPL，所以Greg Kroah-Hartman才在2.6.33内核将Andorid驱动从linux中删除。
+        
+        GPL和硬件厂商目前还是有着无法弥合的裂痕。
+
+
+        总结下来，Android HAL存在的原因主要有：
+          (1). 并不是所有的硬件设备都有标准的linux kernel的接口
+          (2). KERNEL DRIVER涉及到GPL的版权。某些设备制造商并不愿意公开硬件驱动，所以才去用HAL方式绕过GPL。
+          (3). 针对某些硬件，An有一些特殊的需求
+
+
+2. HAL的演进:
+        HAL,以前是以module来被调用的。所谓module，就是将c文件编译成.so文件，然后在jni中加载调用。
+        此种方式现在在源码的libhardware_legacy文件夹下。
+        
+        后来HAL的架构改变，变成了以stub的形式来被上层调用。这样就有种面向对象的思想了。
+        虽然也是编译成so文件然后加载，但是JNI是直接调用c对象。这种层次更清晰，而且更易于维护和扩展。
+
+
+3. 源码目录:
+        hardware/libhardware/include/hardware/gps.h
+        hardware/qcom/gps/loc_api/gps.c
+
+
+gps.h文件:
+          中定义了GPS相关的结构体接口，在“重要结构体及接口”中已经介绍，在此不再赘述。
+gps.c文件：
+          首先定义了gps设备模块实例，下面的注释很重要，说明了如何构建一个模块，这是Android中标准的构建模块写法。
+
+/**
+ * Every hardware module must have a data structure named HAL_MODULE_INFO_SYM
+ * and the fields of this data structure must begin with hw_module_t
+ * followed by module specific information.
+ */
+struct hw_module_t HAL_MODULE_INFO_SYM = {
+    .tag = HARDWARE_MODULE_TAG,
+    .module_api_version = 1,
+    .hal_api_version = 0,
+    .id = GPS_HARDWARE_MODULE_ID,
+    .name = "loc_api GPS Module",
+    .author = "Qualcomm USA, Inc.",
+    .methods = &gps_module_methods,
+};
+
+
+这里的id用来指定模块库文件名的，methods指向gps.c文件中的gps_module_methods:
+
+static struct hw_module_methods_t gps_module_methods = {
+    .open = open_gps
+};
+
+
+gps_module_methods定义了设备的open函数为open_gps，我们来看open_gps函数：
+
+static int open_gps(const struct hw_module_t* module, char const* name,
+        struct hw_device_t** device)
+{
+    struct gps_device_t *dev = (struct gps_device_t *) malloc(sizeof(struct gps_device_t));
+
+    if(dev == NULL)
+        return -1;
+
+    memset(dev, 0, sizeof(*dev));
+
+    dev->common.tag = HARDWARE_DEVICE_TAG;
+    dev->common.version = 0;
+    dev->common.module = (struct hw_module_t*)module;
+    dev->get_gps_interface = gps__get_gps_interface;
+
+    *device = (struct hw_device_t*)dev;
+    return 0;
+}
+
+此处可以看作是GPS设备的初始化函数，在使用设备前,必须执行此函数。
+函数里面指定了hw_device_t的module成员，以及gps_device_t的get_gps_interface成员。
+上层可通过gps_device_t的get_gps_interface调用gps__get_gps_interface函数。
+
+gps__get_gps_interface的定义如下：
+
+const GpsInterface* gps__get_gps_interface(struct gps_device_t* dev)
+{
+    return get_gps_interface();
+}
+
+
+get_gps_interface的实现是在gps/loc_api/Loc.cpp：
+
+// for gps.c
+extern "C" const GpsInterface* get_gps_interface()
+{
+    unsigned int target = TARGET_DEFAULT;
+    loc_eng_read_config();
+
+    target = loc_get_target();
+    LOC_LOGD("Target name check returned %s", loc_get_target_name(target));
+
+    int gnssType = getTargetGnssType(target);
+    switch (gnssType)
+    {
+    case GNSS_GSS:
+        //APQ8064
+        gps_conf.CAPABILITIES &= ~(GPS_CAPABILITY_MSA | GPS_CAPABILITY_MSB);
+        gss_fd = open("/dev/gss", O_RDONLY);
+        if (gss_fd < 0) {
+            LOC_LOGE("GSS open failed: %s\n", strerror(errno));
+        }
+        else {
+            LOC_LOGD("GSS open success! CAPABILITIES %0lx\n",
+                     gps_conf.CAPABILITIES);
+        }
+        break;
+    case GNSS_NONE:
+        //MPQ8064
+        LOC_LOGE("No GPS HW on this target. Not returning interface.");
+        return NULL;
+    case GNSS_QCA1530:
+        // qca1530 chip is present
+        gps_conf.CAPABILITIES &= ~(GPS_CAPABILITY_MSA | GPS_CAPABILITY_MSB);
+        LOC_LOGD("qca1530 present: CAPABILITIES %0lx\n", gps_conf.CAPABILITIES);
+        break;
+    }
+    return &sLocEngInterface;
+}
+
+sLocEngInterface的定义如下：
+
+// Defines the GpsInterface in gps.h
+static const GpsInterface sLocEngInterface =
+{
+   sizeof(GpsInterface),
+   loc_init,
+   loc_start,
+   loc_stop,
+   loc_cleanup,
+   loc_inject_time,
+   loc_inject_location,
+   loc_delete_aiding_data,
+   loc_set_position_mode,
+   loc_get_extension
+};
+
+
+sLocEngInterface指定了GpsInterface结构体的各个回调函数，如启动定位/取消定位等，这些回调函数的实现均在Loc.cpp中实现。
