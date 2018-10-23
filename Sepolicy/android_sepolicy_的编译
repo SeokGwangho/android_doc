@@ -1,0 +1,75 @@
+------------------------------------------------------
+android_sepolicy_的编译
+------------------------------------------------------
+以Android 4.x 为例，来说明sepolicy的编译
+
+背景：
+sepolicy是[所有的策略语言]编译之后生成的二进制文件，最终被导入到kernel中，当某个操作发生时，seandroid会根据这个文件进行检查该操作是否被允许；
+
+那么如何将[所有的策略语言]编译成sepolicy ?
+
+
+
+------------------------------------------------------
+一：编译
+------------------------------------------------------
+其实和android的源码编译一样，使用的命令是：
+mmm external/sepolicy
+
+在编译之前需要设定一下环境：
+. build/envsetup.sh
+lunch
+选择对应的设备
+
+------------------------------------------------------
+二： sepolicy编译过程分析
+------------------------------------------------------
+使用命令 mmm external/sepolicy --just-print
+1： 创建目录
+mkdir -p out/target/product/elite1000/obj/ETC/sepolicy_intermediates/
+
+2：用ｍ4命令 编译se文件，生成policy.conf 文件
+m4 -D mls_num_sens=1 -D mls_num_cats=1024 -s external/sepolicy/security_classes external/sepolicy/initial_sids external/sepolicy/access_vectors external/sepolicy/global_macros external/sepolicy/mls_macros external/sepolicy/mls external/sepolicy/policy_capabilities external/sepolicy/te_macros external/sepolicy/attributes external/sepolicy/adbd.te external/sepolicy/app.te external/sepolicy/bluetoothd.te external/sepolicy/bluetooth.te external/sepolicy/dbusd.te external/sepolicy/debuggerd.te external/sepolicy/device.te external/sepolicy/dhcp.te external/sepolicy/domain.te external/sepolicy/drmserver.te external/sepolicy/file.te external/sepolicy/gpsd.te external/sepolicy/hci_attach.te external/sepolicy/init_shell.te external/sepolicy/init.te external/sepolicy/installd.te external/sepolicy/kernel.te external/sepolicy/keystore.te external/sepolicy/mediaserver.te external/sepolicy/mtp.te external/sepolicy/netd.te external/sepolicy/net.te external/sepolicy/nfc.te external/sepolicy/ping.te external/sepolicy/ppp.te external/sepolicy/property.te external/sepolicy/qemud.te external/sepolicy/racoon.te external/sepolicy/radio.te external/sepolicy/rild.te external/sepolicy/runas.te external/sepolicy/sdcardd.te external/sepolicy/servicemanager.te external/sepolicy/shell.te external/sepolicy/surfaceflinger.te external/sepolicy/su_user.te external/sepolicy/system.te external/sepolicy/tee.te external/sepolicy/ueventd.te external/sepolicy/unconfined.te external/sepolicy/vold.te external/sepolicy/watchdogd.te external/sepolicy/wpa_supplicant.te external/sepolicy/zygote.te external/sepolicy/roles external/sepolicy/users external/sepolicy/initial_sid_contexts external/sepolicy/fs_use external/sepolicy/genfs_contexts external/sepolicy/port_contexts > out/target/product/elite1000/obj/ETC/sepolicy_intermediates/policy.conf
+
+3：根据policy.conf 文件中的内容生成policy.conf.dontaudit 文件
+sed '/dontaudit/d' out/target/product/elite1000/obj/ETC/sepolicy_intermediates/policy.conf > out/target/product/elite1000/obj/ETC/sepolicy_intermediates/policy.conf.dontaudit
+
+4：用checkpolicy 命令，以policy.conf文件为输入，生成sepolicy 文件
+mkdir -p out/target/product/elite1000/obj/ETC/sepolicy_intermediates/
+out/host/linux-x86/bin/checkpolicy -M -c 26 -o out/target/product/elite1000/obj/ETC/sepolicy_intermediates/sepolicy out/target/product/elite1000/obj/ETC/sepolicy_intermediates/policy.conf
+out/host/linux-x86/bin/checkpolicy -M -c 26 -o out/target/product/elite1000/obj/ETC/sepolicy_intermediates//sepolicy.dontaudit out/target/product/elite1000/obj/ETC/sepolicy_intermediates/policy.conf.dontaudit
+
+5：将生成的sepolicy 文件cp 到out/target/product/elite1000/root/
+echo "Install: out/target/product/elite1000/root/sepolicy"
+mkdir -p out/target/product/elite1000/root/
+out/host/linux-x86/bin/acp -fp out/target/product/elite1000/obj/ETC/sepolicy_intermediates/sepolicy out/target/product/elite1000/root/sepolicy
+
+6：生成file_contexts， 用m4命令，输入：external/sepolicy/file_contexts, 输出为out/target/product/elite1000/obj/ETC/file_contexts_intermediates/file_contexts
+mkdir -p out/target/product/elite1000/obj/ETC/file_contexts_intermediates/
+m4 -s  external/sepolicy/file_contexts  > out/target/product/elite1000/obj/ETC/file_contexts_intermediates/file_contexts
+out/host/linux-x86/bin/checkfc out/target/product/elite1000/obj/ETC/sepolicy_intermediates/sepolicy out/target/product/elite1000/obj/ETC/file_contexts_intermediates/file_contexts
+
+7：将生成的file_contexts cp 到out/target/product/elite1000/root
+echo "Install: out/target/product/elite1000/root/file_contexts"
+mkdir -p out/target/product/elite1000/root/
+out/host/linux-x86/bin/acp -fp out/target/product/elite1000/obj/ETC/file_contexts_intermediates/file_contexts out/target/product/elite1000/root/file_contexts
+
+8: 和file_contexts类似，最终生成seapp_contexts和property_contexts到out/target/product/elite1000/root目录
+mkdir -p out/target/product/elite1000/obj/ETC/seapp_contexts_intermediates/
+out/host/linux-x86/bin/checkseapp -p out/target/product/elite1000/obj/ETC/sepolicy_intermediates/sepolicy -o out/target/product/elite1000/obj/ETC/seapp_contexts_intermediates/seapp_contexts out/target/product/elite1000/obj/ETC/seapp_contexts_intermediates/seapp_contexts.tmp
+echo "Install: out/target/product/elite1000/root/seapp_contexts"
+mkdir -p out/target/product/elite1000/root/
+out/host/linux-x86/bin/acp -fp out/target/product/elite1000/obj/ETC/seapp_contexts_intermediates/seapp_contexts out/target/product/elite1000/root/seapp_contexts
+
+mkdir -p out/target/product/elite1000/obj/ETC/property_contexts_intermediates/
+m4 -s  external/sepolicy/property_contexts  > out/target/product/elite1000/obj/ETC/property_contexts_intermediates/property_contexts
+out/host/linux-x86/bin/checkfc -p out/target/product/elite1000/obj/ETC/sepolicy_intermediates/sepolicy out/target/product/elite   1000/obj/ETC/property_contexts_intermediates/property_contexts
+echo "Install: out/target/product/elite1000/root/property_contexts"
+mkdir -p out/target/product/elite1000/root/
+out/host/linux-x86/bin/acp -fp out/target/product/elite1000/obj/ETC/property_contexts_intermediates/property_contexts out/target/product/elite1000/root/property_contexts
+
+------------------------------------------------------
+TIP: 
+------------------------------------------------------
+file_contexts, seapp_contexts, property_contexts 都是android 特有的策略文件;
+checkfc,以及checkseap 是编译android 策略文件时，使用的检测工具，看是否有规则不符合；
