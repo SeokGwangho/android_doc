@@ -1,0 +1,111 @@
+-----------------------------------------------------
+Android_◯的New_Binder域.txt
+-----------------------------------------------------
+
+一直以来，供应商进程都使用 Binder 进程间通信 (IPC) 技术进行通信。
+
+
+1.在 Android O 中，/dev/binder 设备节点,成为了框架进程的专属节点，这意味着供应商进程,将无法再访问该节点!!!
+
+2.供应商进程可以访问 /dev/hwbinder，但必须将其 AIDL 接口转为使用 HIDL。
+
+3.对于想要继续在供应商进程之间使用 AIDL 接口的供应商，Android 会按以下方式支持 Binder IPC。
+-----------------------------------------------------------
+vndbinder：
+-----------------------------------------------------------
+    Android◯ 支持供应商服务使用新的 Binder 域，这可通过使用 /dev/vndbinder（而非 /dev/binder）进行访问。
+    添加/dev/vndbinder 后，
+--------------------------------
+Android 现在拥有以下 3 个 IPC 域：
+--------------------------------
+  IPC域　             说明
+/dev/binder	          框架/应用进程之间的 IPC，使用 AIDL 接口
+/dev/hwbinder	        框架/供应商进程之间的 IPC，使用 HIDL 接口、供应商进程之间的 IPC，使用 HIDL 接口
+/dev/vndbinder　      供应商/供应商进程之间的 IPC，使用 AIDL 接口
+
+为了显示 /dev/vndbinder，请确保内核配置项 CONFIG_ANDROID_BINDER_DEVICES 设为"binder,hwbinder,vndbinder"
+（这是 Android 通用内核树的默认设置）。
+
+通常，供应商进程不直接打开 Binder 驱动程序，而是链接到打开 Binder 驱动程序的 libbinder 用户空间库。
+为::android::ProcessState() 添加方法可为 libbinder 选择 Binder 驱动程序。
+供应商进程应该在调用ProcessState,、IPCThreadState 或（在一般情况下）发出任何 Binder 调用之前调用此方法。
+
+要使用该方法，请在供应商进程（客户端和服务器）的 main() 后放置以下调用：
+
+ProcessState::initWithDriver("/dev/vndbinder");
+
+-----------------------------------------------------------
+vndservicemanager：
+-----------------------------------------------------------
+以前，Binder 服务通过 servicemanager 注册，其他进程,可从中检索这些服务。
+
+在 Android O 中，servicemanager 现在,专用于框架和应用进程，供应商进程,无法再对其进行访问!!
+
+不过，供应商服务现在可以使用 vndservicemanager，这是一个使用 /dev/vndbinder（作为构建基础的源代码与框架servicemanager 相同）
+而非 /dev/binder 的 servicemanager 的新实例。
+
+供应商进程,无需更改即可与vndservicemanager 通信；
+当供应商进程打开 /dev/vndbinder 时，服务查询会自动转至 vndservicemanager。
+
+vndservicemanager 二进制文件包含在 Android 的默认设备 Makefile 中。
+
+
+
+-----------------------------------------------------------
+SELinux 政策 + Android 8.0
+-----------------------------------------------------------
+想要使用 Binder 功能,来相互通信的供应商进程,需要满足以下要求：
+
+能够访问 /dev/vndbinder。
+将 Binder {transfer, call} 接入 vndservicemanager。
+
+针对想要通过供应商 Binder 接口,调用供应商域 B 的任何供应商域 A 执行 binder_call(A, B) 操作。
+有权在 vndservicemanager 中对服务执行 {add, find} 操作。
+
+要满足要求 1 和 2，请使用 vndbinder_use() 宏：
+vndbinder_use(some_vendor_process_domain);
+
+
+要满足要求 3，需要通过 Binder 通信的供应商进程 A 和 B 的 binder_call(A, B) 可以保持不变，且不需要重命名。
+
+要满足要求 4，您必须按照处理服务名称、服务标签和规则的方式进行更改。
+
+有关 SELinux 的详细信息，请参阅 Android 中的安全增强型 Linux。
+有关 Android 8.0 中 SELinux 的详细信息，请参阅SELinux for Android 8.0。
+------------------------
+SELinux中的服务名称:
+------------------------
+以前，供应商进程在 service_contexts 文件中注册服务名称并添加用于访问该文件的相应规则。
+
+来自device/google/marlin/sepolicy 的 service_contexts 文件示例：
+        AtCmdFwd                         u:object_r:atfwd_service:s0 
+        cneservice                       u:object_r:cne_service:s0 
+        qti.ims.connectionmanagerservice u:object_r:imscm_service:s0 
+        rcs                              u:object_r:radio_service:s0 
+        uce                              u:object_r:uce_service:s0
+        vendor.qcom.PeripheralManager    u:object_r:per_mgr_service:s0
+
+而在 Android O 中，vndservicemanager 会加载 vndservice_contexts 文件。
+迁移到 vndservicemanager 供应商服务（且已经在旧的 service_contexts 文件中）的供应商服务应该添加到新的 vndservice_contexts 文件中。
+
+------------------------
+SELinux中的服务标签：
+------------------------
+以前，服务标签（例如 u:object_r:atfwd_service:s0）在 service.te 文件中定义。例如：
+      type atfwd_service,      service_manager_type;
+
+在 Android O 中，您必须将类型更改为 vndservice_manager_type 并将规则移动到 vndservice.te 文件中。例如：
+      type atfwd_service,      vndservice_manager_type;
+
+------------------------
+SELinux中的 Servicemanager 规则：
+------------------------
+以前，规则会授予域访问权限，以向 servicemanager 添加服务或在其中查找服务。例如：
+
+      allow atfwd atfwd_service:service_manager find;
+      allow some_vendor_app atfwd_service:service_manager add;
+
+在 Android O 中，这样的规则可继续存在并使用相同的类。例如：
+
+      allow atfwd atfwd_service:service_manager find;
+      allow some_vendor_app atfwd_service:service_manager add;
