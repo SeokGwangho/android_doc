@@ -1,0 +1,689 @@
+--------------------------------------------------------
+Android系统中Location-Service的实现与架构
+--------------------------------------------------------
+定位服务是移动设备上最常用的功能之一，下文以 Android 源码为基础，详细分析了 Android 系统中定位服务的架构和实现。 
+定位服务是 Android 系统提供的一项系统服务，在 Android 系统中，所有系统服务的架构都是类似的。只要明白其中一个，然后再去理解其他是很容易的。 
+对于 Android 的应用开发人员来说，本文可以帮助他们了解他们所使用的 API 背后的实现。 
+对于 Android 的系统开发人员来说，本文可以帮助他们更好的了解 Android 系统架构。 
+关于如何获取 Android 源码，请参阅 Android Source 的官方网站：http://source.android.com/source/downloading.html 
+Android 源码中包含了大量的文件，有些源文件甚至是同名的。
+
+为了清楚的指明我们所讨论的文件，本文在提到源码文件的时候都会指明其在 Android 源码树中的路径。
+
+android.location 包与 API 代码示例
+定位服务提供给应用层的 API 位于 android.location 包中，它其中包含的类和接口如表 1 所示：
+
+表 1. android.location 包中的类和接口
+名称	类型	说明
+GpsStatus.Listener	接口	用于接受 GPS 状态改变时的通知。
+GpsStatus.NmeaListener	接口	用于接受 Nmea（为海用电子设备制定的格式）信息。
+LocationListener	接口	用于接受位置信息改变时的通知。
+Address	类	用于描述地址信息。
+Criteria	类	用于选择 LocationProvider。
+Geocoder	类	用于处理地理位置的编码。
+GpsSatellite	类	用于描述 GPS 卫星的状态。
+GpsStatus	类	用于描述 GPS 设备的状态。
+Location	类	用于描述地理位置信息，包括经度，纬度，海拔，方向等信息。
+LocationManager	类	用于获取和调用定位服务。
+LocationProvider	类	描述 Location Provider 的超类，Location Provider 是真正用来获取位置信息的组件。
+
+Location Provider 的实现主要可以分为两类：一种依赖于 GPS 设备，另一种依赖网络状态。
+
+在表 1 中，最重要的类是 LocationManager，这是整个定位服务的入口类。 清单 1 是使用定位服务 API 的代码示例：
+
+清单 1. 使用定位服务提供的 API
+public class MainActivity extends Activity { 
+ 
+ // 测试使用的日志 Tag 
+ private static final String TAG = "LocationService API Demo"; 
+ // 将在 onCreate 中被初始化
+ private LocationManager locationManager; 
+ // 接受位置更新的监听器
+ protected final LocationListener locationListener = 
+                                 new            LocationListener() { 
+ 
+   // 当位置发生变化时，输出位置信息
+   public void onLocationChanged(Location location) { 
+     Log.d(TAG, "Location changed to: " + getLocationInfo(location)); 
+   } 
+  
+   public void onProviderDisabled(String provider) { 
+     Log.d(TAG, provider + " disabled."); 
+   } 
+  
+   public void onProviderEnabled(String provider) { 
+     Log.d(TAG, provider + " enabled."); 
+   } 
+ 
+   public void onStatusChanged(String provider, int status, 
+Bundle extras){ 
+     Log.d(TAG, provider + " status changed."); 
+   } 
+ }; 
+ 
+ @Override 
+ protected void onCreate(Bundle savedInstanceState) { 
+   super.onCreate(savedInstanceState); 
+   setContentView(R.layout.activity_main); 
+   // 获取 LocationManager 
+   locationManager = (LocationManager)getSystemService(LOCATION_SERVICE); 
+ } 
+  
+ @Override 
+ protected void onResume() { 
+   super.onResume(); 
+   // 指定一个 Provider 
+   String currentProvider = LocationManager.NETWORK_PROVIDER; 
+   Log.d(TAG, "CurrentProvider: " + currentProvider); 
+   // 获取 Provider 最后一个记录的地址信息
+   Location lastKnownLocation = locationManager 
+.getLastKnownLocation(currentProvider); 
+   if (lastKnownLocation != null) { 
+     Log.d(TAG, "LastKnownLocation: "
+   + getLocationInfo(lastKnownLocation)); 
+   } else { 
+     Log.d(TAG, "Last Location Unkown!"); 
+   } 
+   // 注册监听器接受位置更新
+   locationManager.requestLocationUpdates(currentProvider, 0, 0, 
+locationListener); 
+ } 
+  
+ @Override 
+ protected void onPause() { 
+   super.onPause(); 
+   // 移除监听器
+   locationManager.removeUpdates(locationListener); 
+   Log.d(TAG, "LocationListener: " + locationListener + " removed."); 
+ } 
+ 
+ /** 
+  * 将 Location 对象转换成字符串形式方便显示
+  * 
+  * @param location 
+  *            Location 对象
+  * @return 字符串形式的表示
+  */ 
+ private String getLocationInfo(Location location) { 
+   String info = ""; 
+   info += "Longitude:" + location.getLongitude(); 
+   info += ", Latitude:" + location.getLatitude(); 
+   if (location.hasAltitude()) { 
+     info += ", Altitude:" + location.getAltitude(); 
+   } 
+   if (location.hasBearing()) { 
+     info += ", Bearing:" + location.getBearing(); 
+   } 
+   return info; 
+ } 
+}
+这段代码的说明如下： 在 Activity 显示的时候首先尝试获取通过网络定位的 Location Provider 记录的最后一次定位信息，
+然后在系统中注册一个监听器来监听位置信息的变更，这里的 API 都是使用定位服务最常用的。
+
+定位服务的实现架构图
+整个定位服务的架构如图 1 所示。该结构共分为四层：
+
+最上面是应用层，即 android.location 包中包含的内容，是以 Java 语言提供的 API。
+第二层是框架层，这一层包含了系统服务的实现，主要由 Java 语言来实现。
+第三层是共享库层，本层由 C 以及 C++ 语言实现 , 框架层与共享库层使用 JNI 进行衔接。
+最下面一层是 Linux 内核层 , 整个 Android 系统都是以 Linux 内核为基础的。
+从上至下它们是逐层依赖的关系，每层依赖下面一层完成其所需提供的服务。
+
+图 1. 定位服务的实现架构图
+---------------------------------------------------------------
+App层
+
+框架层
+
+共享库层
+
+内核驱动层
+---------------------------------------------------------------
+系统服务的启动与注册
+从图 1 中可以看出，在框架层，实现位置服务的类是 LocationManagerService，这是一个系统服务。 
+
+问：
+那么 LocationManager 和 LocationManagerService 两者是什么关系，它们是如何关联起来的呢？ 
+
+答：
+想要理解这一点就要先介绍一下 Android 中的 Binder 机制。 
+在 Android 系统中，系统服务运行在一个专门的进程中，这个进程名称为 system_server，该进程在系统启动的时候便被加载和启动；
+系统中有一个专门用来管理系统服务的类，它叫做 ServiceManager，这个类负责注册并管理所有的系统服务；
+当应用程序想要使用系统服务时，需要通过服务的代理来调用服务。
+
+由于客户应用程序运行在自己的进程中，这和 system_server 是两个独立的进程，因此代理需要通过进程间通讯将请求发送到 system_server 进程，
+由该进程来响应服务，然后再返回结果。
+整个这个机制称之为 Binder 机制。
+
+Binder 机制在 Android 系统中应用非常之广，几乎所有的进程间通讯都是使用该进制完成的。 
+---------------------------------------------------------------------------------------
+
+图 2 描述了 Binder 机制的请求和响应过程：
+图 2. Binder 机制的请求和响应过程
+
+Binder Driver 作为 Binder 机制的核心部分完成底层进程间通讯的工作。
+被请求的进程（这里是系统服务进程）通常会缓存一些线程，当有请求时，在这些线程中完成请求。 
+
+了解了 Binder 机制之后，我们继续来看 LocationManager，
+在 LocationManager.java( 位于：frameworks/base/location/java/android/location/) 中可以看到，
+LocationManager 类中所有功能的实现都是依赖于一个名称为 mService 的字段来实现的，这个字段的类型是 ILocationManager。
+而这个对象就是我们上面所说的代理。
+
+mService 字段是在 LocationManager 的构造函数中被初始化的，因此找到 LocationManager 构造函数被调用的地方就可以知道这个代理对象是哪里来的了。
+
+在 ContextImpl.java(frameworks/base/core/java/android/app) 中有这样一段代码，如清单 2 所示：
+
+清单 2. registerService 方法中的代码片段
+registerService(LOCATION_SERVICE, new StaticServiceFetcher() {                 
+   public Object createStaticService() {                     
+       IBinder b = ServiceManager.getService(LOCATION_SERVICE);                     
+       return new LocationManager(ILocationManager.Stub.asInterface(b));                 
+}});
+在这里，我们见到了 ServiceManager 这个类，上文说了，这个类是专门用来管理系统服务的。通过它，我们便可以获取定位服务的实现类对象，
+然后又通过 ILocationManager.Stub.asInterface(b) 将其转换成服务的代理存放到了 LocationManager 中。 
+
+那又问： 那 ServiceManager 中所管理的系统服务对象又是从哪里来的呢？
+答：
+要弄清这个问题，还需要比较多的调查。
+下面我们来详细讲解： 在 Android 系统启动过程中，需要完成一系列的初始化动作。
+源码中有一个专门的脚本来管理启动时需要完成的任务，该脚本文件名称为 init.rc（位于：system/core/rootdir）。
+这个脚本文件由 init 进程读取。 
+
+在这个脚本文件中有这样一段代码（关于 init 进程以及 init.rc 脚本的语法，请参见参考资料中的链接）：
+清单 3. init.rc 中的代码片段
+service zygote /system/bin/app_process -Xzygote 
+           /system/bin --zygote --start-system-server
+该行脚本的含义如下： “service”指明要启动一个系统服务，
+“zygote”是该服务的名称，
+“/system/bin/app_process”是该服务的可执行文件路径。
+“-Xzygote /system/bin”是可执行文件的工作目录，
+“--zygote – start-system-server”是提供给可执行文件的参数。 
+
+
+想要弄清这里究竟发生了什么，我们还需要查看 app_process 的源码。
+该源码位于：frameworks/base/cmds/app_process/app_main.cpp 中。 
+在 app_main.cpp 中，判断由于参数同时包含了“— zygote”和“--start-system-server”，因此启动 com.android.internal.os.ZygoteInit 类，
+并传递“start-system-server”作为其 main 函数的参数。 
+
+而在 ZygoteInit.java（frameworks/base/core/java/com/android/internal/os）中，判断如果参数为“start-system-server”则调用
+startSystemServer 方法来启动系统服务。
+
+启动的方法是 fork 一个新的进程，然后在其中加载 com.android.server.SystemServer 类。 
+在 SystemServer 中，有一个名为 ServerThread 的类，这是一个线程类，在这个类中真正执行了系统服务的创建和注册 。
+
+以 LocationManagerService 为例，在 ServerThread 的 run 方法中有以下代码：
+
+清单 4. ServerThread 中 run 方法的代码片段
+try { 
+ Slog.i(TAG, "Location Manager"); 
+ location = new LocationManagerService(context); 
+ ServiceManager.addService(Context.LOCATION_SERVICE, location); 
+} catch (Throwable e) { 
+ reportWtf("starting Location Manager", e); 
+}
+这段代码真正完成了 LocationManagerService 的创建和注册。 整个调用关系如图 3 所示：
+
+图 3. LocationManagerService 注册过程
+
+图略
+
+因此，在系统启动完成之后，这些系统服务也逐个的被启动并注册在 ServiceManager 中了。 
+既然所有系统都是注册在 ServiceManager 中的，有些读者可能要问，可不可以不使用代理，直接通过 ServiceManager 来获取系统服务对象，然后调用呢？
+答案是否定的。 
+
+在 Android 中，将公开的 API 和非公开的 API 做了划分。所有非公开的 API 在开发应用程序的 SDK 中是无法使用的，
+而 ServiceManager 就是属于非公开的 API。所以对于应用程序开发人员，根本无法接触到 ServiceManager 类。
+
+LocationManagerService
+现在，我们终于可以来看看定位服务的真正实现类：LocationManagerService。 
+该类位于 frameworks/base/services/java/com/android/server/LocationManagerService.java 中。 
+这个类的文件有 2400 多行，第一次看到可能会觉得这个类太大了，以至于无从下手。
+其实，在 Android 的源码，这个文件远不算大，WindowManagerService 源文件有 10000 多行，ActivityManagerService 源文件有 15000 多行。
+
+不管类有多大，只要遵循一定的分析方法，总能逐步的将这个类理解下来。 笔者认为，要分析一个类只要遵循以下几个步骤即可：
+
+理解该类的主要作用
+分析类中的主要字段
+理解类的构造方法以及初始化过程
+理解类中的主要业务逻辑方法
+分析类中的其他成员：例如内部类
+分析与这个类紧密相关的其他类
+下面，我们就以这样的方法来逐步剖析 LocationManagerService。 LocationManagerService 最主要的作用自然是提供定位服务，在刚开始的内容中我们已经看到，获取位置信息可以选择不同的 Location Provider，每个 Location Provider 可能会记录最近一次的定位信息。同时，我们也可以使用监听器来主动获取位置更新通知。所有的这些功能，都是在 LocationManagerService 中实现的。
+
+主要字段
+LocationManagerService 中包含主要字段如表 2 所示：
+
+表 2. LocationManagerService 中的主要字段
+类型	名称
+HashMap	mLastWriteTime
+Set	mEnabledProviders
+Set	mDisabledProviders
+boolean	sProvidersLoaded
+String	mNetworkLocationProviderPackageName
+String	mGeocodeProviderPackageName
+LocationWorkerHandler	mLocationHandler
+LocationProviderProxy	mNetworkLocationProvider
+LocationProviderInterface	mGpsLocationProvider
+ArrayList	mProviders
+HashMap	mProvidersByName
+Object	mLock
+HashMap	mLastKnownLocation
+PackageMonitor	mPackageMonitor
+从这些字段中我们可以看出，LocationManagerService 中的主要内容都是围绕着 Location Provider 而实现的。
+
+构造函数
+下面我们来看一下 LocationManagerService 的构造方法：其代码如清单 5 所示：
+
+清单 5. LocationManagerService 构造方法
+
+public LocationManagerService(Context context) { 
+   super(); 
+   mContext = context; 
+   Resources resources = context.getResources(); 
+ 
+   mNetworkLocationProviderPackageName = 
+                                       resources.getString(    
+    com.android.internal.R.string.config_networkLocationProviderPackageName); 
+   mGeocodeProviderPackageName = resources.getString( 
+com.android.internal.R.string.config_geocodeProviderPackageName); 
+ 
+   mPackageMonitor.register(context, null, true); 
+ 
+   if (LOCAL_LOGV) { 
+       Slog.v(TAG, "Constructed LocationManager Service"); 
+   } 
+}
+这个构造方法很简单，这里初始化了 mContext，mNetworkLocationProviderPackageName 和 mGeocodeProviderPackageName 三个字段，然后使用 mPackageMonitor 注册包更新的 context。 其中，mNetworkLocationProviderPackageName，mGeocodeProviderPackageName 这两个字段是通过读取资源文件的内容来初始化的。关于这两个字段的说明在表 2 中已经提到过。
+
+这里之所以将这两个包名放在外部资源文件中，同时通过 LocationProviderProxy 以代理的形式来使用这个服务，目的很显然：这样做可以在运行的时候动态的替换服务。而 PackageMonitor 以及 LocationWorkerHandler 便是相应实现这一机制的类。
+
+LocationProviderInterface
+上文中我们说了，Location Provider 是真正获取位置信息的模块。在 android.location 包中，用 LocationProvider 这个接口来描述。而这一接口是提供给应用层 API 使用的，在 LocationManagerService 中，Location Provider 使用另外一个接口来描述，这就是 com.android.location.provider. LocationProviderInterface，LocationManagerService 对于定位服务的实现均是通过调用 LocationProviderInterface 来完成的。
+
+LocationProviderInterface 对象存储在名称为 mProviders 以及 mProvidersByName 的字段中（见表 2）。 LocationProviderInterface 接口的说明如表 3 所示：
+
+表 3. LocationProviderInterface 接口说明
+名称	说明
+getName	获取当前 Location Provider 的名称
+requiresNetwork	该 Location Provider 是否需要网络
+requiresSatellite	该 Location Provider 是否需要卫星
+requiresCell	该 Location Provider 是否需要手机蜂窝信号
+hasMonetaryCost	该 Location Provider 是否需要耗费金钱
+supportsAltitude	该 Location Provider 是否支持海拔高度信息
+supportsSpeed	该 Location Provider 是否支持速度信息
+supportsBearing	该 Location Provider 是否支持方位信息
+getPowerRequirement	获取该 Location Provider 的耗电量级别
+meetsCriteria	该 Location Provider 是否能符合指定的 Criteria
+getAccuracy	获取该 Location Provider 的精度级别
+isEnabled	查询有效状态
+enable	使该 Location Provider 有效
+disable	使该 Location Provider 无效
+getStatus	获取该 Location Provider 的状态
+getStatusUpdateTime	获取该 Location Provider 的状态更新时间
+enableLocationTracking	使该 Location Provider 位置追踪有效
+requestSingleShotFix	请求 Single Shot Fix
+getInternalState	获取该 Location Provider 的内部状态
+setMinTime	设置最小时间
+updateNetworkState	使该 Location Provider 更新网络状态
+updateLocation	使该 Location Provider 更新位置
+sendExtraCommand	使该 Location Provider 发送辅助的命令
+addListener	增加监听器
+removeListener	移除监听器
+在 Android 源码中，实现 LocationProviderInterface 接口的类有四个，它们如表 4 所示：
+
+表 4. LocationProviderInterface 的实现类
+名称	说明
+GpsLocationProvider	使用 Gps 卫星定位，最准确的定位方式。
+PassiveProvider	该 Provider 并不真正触发定位的更新，而是使用其他 Provider 来完成位置报告。
+LocationProviderProxy	使用网络实现定位的服务的代理。网络定位依赖于手机信号的基站或者 Wifi 接入点作为定位的基础。注意该类只是个代理，并不包含真正的实现逻辑。
+MockProvider	为了辅助测试的模拟实现类。
+那么，在 LocationManagerService 中，对于 LocationProviderInterface 的加载是在什么时候完成的呢？上面我们已经看过 LocationManagerService 的构造方法了，并没有看到这部分内容。 其实，LocationManagerService 是一个线程类，除了构造函数以外，在其 run 方法中又完成了另外一部分的初始化工作，主要是调用其 initialize 方法。 在 initialize 方法中调用了 loadProviders 方法，loadProviders 这个方法中完成了 Location Provider 的加载工作。 该方法又经过同步加锁以及异常的包装，最终的实现方法是 _loadProvidersLocked。 _loadProvidersLocked 方法的代码如清单 5 所示：
+
+清单 5. _loadProvidersLocked 方法代码
+
+private void _loadProvidersLocked() { 
+       // Attempt to load "real" providers first 
+       if (GpsLocationProvider.isSupported()) { 
+           // Create a gps location provider 
+           GpsLocationProvider gpsProvider = 
+                        new GpsLocationProvider(mContext, this); 
+           mGpsStatusProvider = gpsProvider.getGpsStatusProvider(); 
+           mNetInitiatedListener = gpsProvider.getNetInitiatedListener(); 
+           addProvider(gpsProvider); 
+           mGpsLocationProvider = gpsProvider; 
+       } 
+ 
+       // create a passive location provider, which is always enabled 
+       PassiveProvider passiveProvider = new PassiveProvider(this); 
+       addProvider(passiveProvider); 
+       mEnabledProviders.add(passiveProvider.getName()); 
+ 
+       // initialize external network location and geocoder services. 
+       // The initial value of mNetworkLocationProviderPackageName and 
+       // mGeocodeProviderPackageName is just used to determine what 
+       // signatures future mNetworkLocationProviderPackageName and 
+       // mGeocodeProviderPackageName packages must have. So alternate 
+       // providers can be installed under a different package name 
+       // so long as they have the same signature as the original 
+       // provider packages. 
+       if (mNetworkLocationProviderPackageName != null) { 
+           String packageName = findBestPackage( 
+                  LocationProviderProxy.SERVICE_ACTION, 
+                   mNetworkLocationProviderPackageName); 
+           if (packageName != null) { 
+               mNetworkLocationProvider = new LocationProviderProxy( 
+                       mContext, 
+                       LocationManager.NETWORK_PROVIDER, 
+                       packageName, mLocationHandler); 
+               mNetworkLocationProviderPackageName = packageName; 
+               addProvider(mNetworkLocationProvider); 
+           } 
+       } 
+       if (mGeocodeProviderPackageName != null) { 
+           String packageName = findBestPackage( 
+                   GeocoderProxy.SERVICE_ACTION, 
+                   mGeocodeProviderPackageName); 
+           if (packageName != null) { 
+               mGeocodeProvider = 
+                     new GeocoderProxy(mContext, packageName); 
+               mGeocodeProviderPackageName = packageName; 
+           } 
+       } 
+ 
+       updateProvidersLocked(); 
+   }
+这段代码首先判断当前设备是否支持 Gps，如果支持，则会创建 GpsLocationProvider。 接着，创建了一个 PassiveProvider 对象。 然后，根据 mNetworkLocationProviderPackageName 字段创建 LocationProviderProxy 对象。（在创建 LocationProviderProxy 的时候，packageName 参数是依赖于 mNetworkLocationProviderPackageName 的。这个字段是在 LocationManagerService 的构造函数中初始化的。） 最后，根据 mGeocodeProviderPackageName 字段创建 GeocoderProxy 对象（mGeocodeProviderPackageName 同样是在 LocationManagerService 的构造函数中初始化的）。 这里需要注意的是，LocationProviderProxy 和 GeocoderProxy 两个对象是否会创建，是依赖于系统环境的。在创建它们之前，都通过 findBestPackage 去查看最合适的包，并且查找的过程指定了 Intent 的 Action。只有在系统中已有 Service 支持相应的 Intent 的 Action 时，才会找到合适的包，才会创建这两个对象，否则，如果系统没有找到合适的 Service 就不会创建这两个对象，因为系统根本无法使用这两项服务。 上文我们提到 LocationProviderInterface 有四个实现类。而在 LocationManager 中，定义了三个常量来标示定位服务的提供者：
+
+public static final String NETWORK_PROVIDER = "network";
+public static final String GPS_PROVIDER = "gps";
+public static final String PASSIVE_PROVIDER = "passive";
+显然，这三个常量分别对应着三种 LocationProviderInterface 的实现类（不包括 MockProvider，因为该类仅仅是提供给测试用的）。
+
+内部类
+除此以外，LocationManagerService 中还包含了一些内部类，它们的说明如表 5 所示：
+
+表 5. LocationManagerService 中包含的内部类
+类名	说明
+LocationWorkerHandler	消息处理器，主要处理位置变更以及网络定位的包更新两种消息。例如，当有 Provider 发现有位置更新时，会首先发送消息到 LocationManagerService，而在 LocationManagerService 中该消息最终就是在 LocationWorkerHandler 被处理的。
+LpAccuracyComparator	对于 LocationProviderInterface 按精度排序的比较器。
+LpCapabilityComparator	对于 LocationProviderInterface 按能力排序的比较器。
+LpPowerComparator	对于 LocationProviderInterface 按耗电量排序的比较器。
+ProximityAlert	邻近距离位置的警报器。
+ProximityListener	邻近距离位置的警报监听器。
+Receiver	包装器，用来包含一个 ILocationListener 或者 PendingIntent 来接受位置更新。其中，通知位置更新的方法为 callLocationChangedLocked。
+SettingsObserver	针对系统设置的监听器。
+UpdateRecord	保存更新记录的数据。
+GpsLocationProvider 的实现
+上文已经提到，LocationProviderInterface 的实现类有四个。而实际上，在移动设备上我们可真正用于定位服务的实现通常只有两种：一种是通过 Gps 模块，一种是通过网络。 在分析 LocationManagerService 的代码的时候我们已经看到，对于通过网络定位的实现其实是通过代理的方式来完成的，背后的实现是可以在运行时动态的替换的，是不确定的（在 Android 源码中，通过网络方式定位的默认服务包名是：com.google.android.location, 很显然，这是由 Google 提供实现的服务，但这部分代码是不包含在 Android 源码中的，通过包名的配置，很容易的就做到了将实现与依赖进行隔离了，这是一种非常好的软件设计）。 相反，Gps 模块的定位实现是确定的，是我们可以参考的。 所以，下面我就来看看通过 Gps 模块来完成定位的实现类：GpsLocationProvider（位于：frameworks/base/services/java/com/android/server/location/GpsLocationProvider.java)。 GpsLocationProvider 类包含了大量的常量定义，这些常量大部分是和 HAL 层（关于 HAL 层，我们稍后会讲解）中的定义相对应的，表 6 列出了比较重要的一些常量：
+
+表 6. GpsLocationProvider.java 中包含的重要的常量
+名称	值	说明
+GPS_POSITION_MODE_STANDALONE	0	GPS 单独运行模式
+GPS_POSITION_MODE_MS_BASED	1	AGPS MS-Based 模式
+GPS_POSITION_MODE_MS_ASSISTED	2	AGPS MS-Assisted 模式
+GPS_POSITION_RECURRENCE_PERIODIC	0	以固定的间隔重复接受 GPS 调整
+GPS_POSITION_RECURRENCE_SINGLE	1	一次性接受 GPS 调整
+GPS_STATUS_NONE	0	GPS 状态未知
+GPS_STATUS_SESSION_BEGIN	1	开始导航
+GPS_STATUS_SESSION_END	2	导航结束
+GPS_STATUS_ENGINE_ON	3	GPS 引擎开始工作
+GPS_STATUS_ENGINE_OFF	4	GPS 引擎关闭
+GPS_REQUEST_AGPS_DATA_CONN	1	GPS 模块为 AGPS 请求数据连接
+GPS_RELEASE_AGPS_DATA_CONN	2	AGPS 数据连接关闭
+GPS_AGPS_DATA_CONNECTED	3	AGPS 数据连接开始
+GPS_AGPS_DATA_CONN_DONE	4	AGPS 数据连接完成
+GPS_AGPS_DATA_CONN_FAILED	5	AGPS 数据连接
+LOCATION_INVALID	0	无效位置
+LOCATION_HAS_LAT_LONG	1	位置信息中包含了经度和纬度信息
+LOCATION_HAS_ALTITUDE	2	位置信息中包含了海拔信息
+LOCATION_HAS_SPEED	4	位置信息中包含了速度信息
+LOCATION_HAS_BEARING	8	位置信息中包含了方位信息
+LOCATION_HAS_ACCURACY	16	位置信息中包含了准确度信息
+GPS_CAPABILITY_SCHEDULING	0x0000001	GPS 支持计划能力
+GPS_CAPABILITY_MSB	0x0000002	GPS 支持 MS-Based AGPS
+GPS_CAPABILITY_MSA	0x0000004	GPS 支持 MS-Assisted
+GPS_CAPABILITY_SINGLE_SHOT	0x0000008	GPS 支持 single-shot
+GPS_CAPABILITY_ON_DEMAND_TIME	0x0000010	GPS 支持 demand time injection
+GpsLocationProvider 调用 JNI 层为上层提供服务。它使用了 Android 提供的 Looper 和 Handler 机制，这使得它可以在一个独立的线程中完成请求的处理，这些请求的响应在 Looper 所在的线程，而不是请求所在的线程，因此不会阻塞请求的线程。 为了便于理解，我们将 GpsLocationProvider 中的方法分为几类来讨论（某些方法可能不止属于一类）：
+
+初始化方法
+GpsLocationProvider 的构造函数代码内容较多，这里就不贴出了。总的来说，构造函数中主要完成了以下几个事情：
+
+初始化了一系列的字段，包括获取处理时间，电源，闹钟，网络连接等功能的系统服务
+在系统中注册了一个 BroadcastReceiver，这个 BroadcastReceiver 的作用是负责在使用 Gps 模块时响应对于闹钟以及短消息的事件处理。
+读取 Gps 模块的外部配置文件，这是一个属性文件，该文件是用来配置 Gps 模块扩展功能的服务器信息，例如 XTRA 服务器，NTP 服务器等信息。该文件的位置记录在 PROPERTIES_FILE 字段中，它的值是"/etc/gps.conf"。
+创建并启动 GpsLocationProviderThread，这是一个线程类，对于 Gps 模块功能的请求都是在这个线程中完成的。
+GpsLocationProviderThread 的 run 方法代码如清单 7 所示：
+
+清单 7. GpsLocationProviderThread 类中 run 方法代码
+
+public void run() { 
+   Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND); 
+   initialize(); 
+   Looper.prepare(); 
+   mHandler = new ProviderHandler(); 
+   // signal when we are initialized and ready to go 
+   mInitializedLatch.countDown(); 
+   Looper.loop(); 
+}
+这个方法的处理逻辑如下： 首先，将当前进程级别设置为后台级别，这是一个相对较低的级别。然后调用 initialize 方法，在这个方法中，将 mBroadcastReciever 注册到 GpsLocationProviderThread 所在的线程中。 接着，使用 Looper.prepare(); 将当前线程初始化为 Looper。然后，创建了一个 ProviderHandler 对象。ProviderHandler 是 GpsLocationProvider 的内部类，它继承自 Handler，它负责处理通过 Message 发送到当前线程的请求。Looper 和 Handler 的配合使得当前线程可以独立于主线程完成请求和处理。ProviderHandler 是一个很重要的类，GpsLocationProvider 中很多请求都是依靠 Message 机制完成的，例如当调用其 updateNetworkState，updateLocation 等方法时，都是向 GpsLocationProviderThread 线程发送消息，这些消息的处理都是在 ProviderHandler 中完成的（即 GpsLocationProviderThread 所在线程）。 初始化的最后，为了通知主线程初始化已经完成，调用了 mInitializedLatch.countDown()，这行代码和 GpsLocationProvider 构造函数中：mInitializedLatch.await() 是对应的。调用 mInitializedLatch.await() 会导致线程阻塞，直到有另外一个线程调用 mInitializedLatch.countDown() 为止。这里这样做的原因是因为有部分初始化工作在 GpsLocationProviderThread 线程中完成，这和主线程是互相独立的。为了在保证只有在所有初始化工作完成之后 GpsLocationProvider 构造函数才能返回，所以使用了 CountDownLatch 来保证。
+
+实现 LocationProviderInterface 接口的方法
+这些方法是实现 LocationProviderInterface 接口的方法，它们已经在表 3 中说明。
+
+向 GpsLocationProviderThread 发送请求的方法
+这些方法通过 Message 机制发送请求到 GpsLocationProviderThread，它们如表 7 所示：
+
+表 7. GpsLocationProviderThread 的主要方法
+名称	说明
+enable	见表 2
+disable	见表 2
+enableLocationTracking	见表 2
+requestSingleShotFix	见表 2
+updateNetworkState	见表 2
+requestUtcTime	请求 Utc 时间信息
+xtraDownloadRequest	XTRA 下载请求
+updateLocation	见表 2
+addListener	见表 2
+removeListener	见表 2
+ProviderHandler 调用的处理方法
+ProviderHandler 对于请求的处理逻辑并没有直接写在 handleMessage 方法中，而是对于每一个请求专门用一个方法来处理，这些方法如表 8 所示。这些方法的实现通常都是依赖于表 9 的本地方法的。
+
+表 8. ProviderHandler 的方法
+名称	说明
+handleEnable	使该 Provider 有效
+handleDisable	使该 Provider 无效
+handleEnableLocationTracking	使该 Provider 开始记录位置追踪信息
+handleRequestSingleShot	使该 Provider 完成 singleShot 请求
+handleUpdateNetworkState	处理网络状态更新
+handleInjectNtpTime	处理 Ntp 时间注入
+handleDownloadXtraData	处理下载 Xtra 数据
+handleUpdateLocation	处理位置 更新
+handleAddListener	增加监听器
+handleRemoveListener	删除监听器
+本地方法
+Gps 模块的功能实现最终需要调用硬件来完成，这些实现必须通过 C/C++ 语言才能完成。为了能在 GpsLocationProvider.java 中调用到这些功能，GpsLocationProvider 中包含了许多的 native 方法，这些方法如表 9 所示，这些方法都是以 JNI 的方式来实现的。这些 JNI 的实现方法位于 com_android_server_location_GpsLocationProvider.cpp（位于：frameworks/base/services/jni）中。
+
+表 9. GpsLocationProvider 中包含的 native 方法
+名称	说明
+class_init_native	类的初始化方法
+native_is_supported	是否支持 Gps 模块
+native_init	初始化方法
+native_cleanup	负责清理工作
+native_set_position_mode	设置位置模式
+native_start	开始导航
+native_stop	停止导航
+native_delete_aiding_data	删除辅助信息
+native_read_sv_status	读取 SV 状态
+native_read_nmea	读取 nmea 信息
+native_inject_location	注入位置信息
+native_inject_time	注入时间信息
+native_supports_xtra	是否支持 XTRA
+native_inject_xtra_data	注入 XTRA 数据
+native_get_internal_state	获取内部状态
+native_agps_data_conn_open	打开 AGps 数据连接
+native_agps_data_conn_closed	关闭 AGps 数据连接
+native_agps_data_conn_failed	AGps 数据连接失败
+native_agps_ni_message	AGps NI（Network-initiated）消息
+native_set_agps_server	设置 AGPS 服务器
+native_send_ni_response	发送 NI 响应
+native_agps_set_ref_location_cellid	AGPS 设置引用位置
+native_agps_set_id	AGPS 设置 id
+native_update_network_state	更新网络状态
+被 JNI 方法回调的方法
+GpsLocationProvider 中最后一类方法是被 JNI 方法回调的方法。在 JNI 的实现中，通过这些方法的回调来传递 JNI 层的执行结果。它们如表 10 所示：
+
+表 10. GpsLocationProvider 中被 JNI 回调的方法
+名称	说明
+reportLocation	报告位置
+reportStatus	报告状态
+reportSvStatus	报告 SV 状态
+reportAGpsStatus	报告 AGps 状态
+reportNmea	报告 Nmea
+setEngineCapabilities	设置引擎能力
+xtraDownloadRequest	XTRA 下载请求
+reportNiNotification	报告 NI 通知
+requestRefLocation	请求引用位置
+requestSetID	请求设置 id
+requestUtcTime	请求 Utc 时间
+JNI 层与 HAL 层
+JNI(Java Native Interface) 层依赖于 HAL 层为上层提供服务。 HAL(Hardware Abstract Layer) 层是对硬件的抽象，这是整个模块实现的最底层。
+
+JNI 层
+上文中我们已经提到，Gps 模块 JNI 层的实现在 com_android_server_location_GpsLocationProvider.cpp（位于：frameworks/base/services/jni）文件中。该层依赖 HAL 层接口，提供对于 GpsLocationProvider.java 中本地方法的实现。这些本地方法和 JNI 方法是一一对应（关于 GpsLocationProvider.java 中的本地方法请参阅表 9。）。 这种对应关系是在 register_android_server_location_GpsLocationProvider 方法中，通过 jniRegisterNativeMethods 函数建立的。 两个文件中函数的对应关系如表 11 所示：
+
+表 11. GpsLocationProvider 中的 native 方法及其 JNI 实现方法的对应关系
+GpsLocationProvider.java 中的方法名
+class_init_native
+native_is_supported
+native_init
+native_cleanup
+native_set_position_mode
+native_start
+native_stop
+native_delete_aiding_data
+native_read_sv_status
+native_read_nmea
+native_inject_location
+native_inject_time
+native_supports_xtra
+native_inject_xtra_data
+native_get_internal_state
+native_agps_data_conn_open
+native_agps_data_conn_closed
+native_agps_data_conn_failed
+native_agps_ni_message
+native_set_agps_server
+native_send_ni_response
+native_agps_set_ref_location_cellid
+native_agps_set_id
+native_update_network_state
+这其中，最为重要的是两个初始化方法： 一个是 android_location_GpsLocationProvider_class_init_native 方法。这个方法在 GpsLocationProvider 类中的静态初始化块中被调用，它的作用有三个：
+
+在 JNI 层初始化对于 GpsLocationProvider.java 中回调方法的引用。
+尝试打开 Gps 设备。
+如果 Gps 设备打开成功，则获取 Gps 扩展接口的指针，它们一共有五种，分别是：GpsXtraInterface，AGpsInterface，GpsNiInterface，GpsDebugInterface，AGpsRilInterface。这些结构的说明见表 12。
+另一个是 android_location_GpsLocationProvider_init 方法。这个方法的作用是：
+
+尝试初始化 Gps 设备模块，如果初始化失败，直接返回 false。
+尝试初始化 XTRA 扩展接口，如果初始化失败，则使 sGpsXtraInterface 指向 NULL。
+尝试初始化 AGpsInterface，GpsNiInterface，AGpsRilInterface 扩展组件。
+HAL 层
+HAL 层是与硬件相接触的一层，该层使用 C 语言实现。 Gps 模块的 HAL 层的头文件是 gps.h（位于：hardware/libhardware/include/hardware）。gps.h 中包含了很多的常量（这些常量是和 GpsLocationProvider 中的内容相对应的，请参见表 6）以及结构体的定义。这其中，最重要的结构体就是 GpsInterface，这是对 Gps 模块的抽象。它的内容如清单 7 所示：
+
+清单 6. GpsInterface 结构体定义
+
+typedef struct { 
+   // 设置为 sizeof(GpsInterface) 
+   size_t          size; 
+   // 打开 Gps 模块，提供接口实现的回调函数
+   int   (*init)( GpsCallbacks* callbacks ); 
+   // 开始导航
+   int   (*start)( void ); 
+   // 停止导航
+   int   (*stop)( void ); 
+   // 关闭 Gps 模块
+   void  (*cleanup)( void ); 
+   // 注入当前时间
+   int   (*inject_time)(GpsUtcTime time, int64_t timeReference, 
+       int uncertainty); 
+   // 注入当前位置
+   int  (*inject_location)(double latitude, double longitude, 
+       float accuracy); 
+   // 指定下一次启动时，不使用 flags 所定义的信息
+   void  (*delete_aiding_data)(GpsAidingData flags); 
+   // 设置位置模式
+   int   (*set_position_mode)(GpsPositionMode mode, 
+       GpsPositionRecurrence recurrence, 
+       uint32_t min_interval, uint32_t preferred_accuracy, 
+       uint32_t preferred_time); 
+   // 获取扩展信息的指针
+   const void* (*get_extension)(const char* name); 
+} GpsInterface;
+除此以外，该头文件中还定义了与 Gps 模块相关的其他结构体，它们如表 12 所示：
+
+表 12. gps.h 中定义的其他结构体
+名称	说明
+GpsLocation	描述 Gps 位置，包括经度，维度，海拔，速度，方位，精度等信息。
+GpsStatus	描述 Gps 状态
+GpsSvInfo	描述 Gps SV 信息
+GpsSvStatus	描述 Gps SV 状态
+AGpsRefLocationCellID	描述 AGps 引用位置单元 Id
+AGpsRefLocationMac	描述 AGps 引用位置 Mac
+AGpsRefLocation	描述 AGps 引用位置
+GpsCallbacks	描述 Gps 回调函数
+GpsXtraCallbacks	描述 XTRA 接口回调函数
+GpsXtraInterface	提供 XTRA 支持的扩展接口
+GpsDebugInterface	提供 DEBUG 支持的扩展接口
+AGpsStatus	描述 AGps 状态
+AGpsCallbacks	描述 AGps 接口回调函数
+AGpsInterface	提供 AGps 支持的扩展接口
+GpsNiNotification	描述一次 NI（Network-initiated）请求
+GpsNiCallbacks	描述 Gps NI 回调函数结构体
+GpsNiInterface	提供 NI 支持的扩展接口
+AGpsRilCallbacks	描述 AGps Ril 回调函数结构体
+AGpsRilInterface	提供 AGPS-RIL 支持的扩展接口
+由于篇幅所限，这里就不将这些内容展开讲解，请读者自行参阅 Android 源码。 同时，Android 源码中包含了对于高通公司的 Gps 模块的实现，其代码位于 hardware/qcom/gps 中。
+
+总结
+综合以上知识，我们来看一下当硬件接受到位置更新之后，为了通知这个信息，整个调用关系是如何的 ( 为了描述方便，下文将 com_android_server_location_GpsLocationProvider.cpp 简称为 GpsLocationProvider.cpp)。
+
+当硬件检测到有位置更新之后，最初调用的是 GpsLocationProvider.cpp 中的 location_callback 函数。
+location_callback 函数中对应的是调用 GpsLocationProvider.java 中的 reportLocation 方法。
+GpsLocationProvider.java 中的 reportLocation 方法会调用 ILocationManager 的 reportLocation 方法，然后是调用 LocationManagerService 的 reportLocation 方法。
+LocationManagerService 的 reportLocation 方法中会对 LocationWorkerHandler 发送消息 MESSAGE_LOCATION_CHANGED。该消息在 LocationWorkerHandler 的 handleMessage 方法中被处理。处理方法中会调用 LocationProviderInterface 的 updateLocation 方法和 LocationManagerService 的 handleLocationChangedLocked 的方法。前者对于 Gps 模块来说就是调用 GpsLocationProvider 的 updateLocation 方法。
+GpsLocationProvider 的 updateLocation 方法会对 ProviderHandler 发送消息 UPDATE_LOCATION，该消息在 ProviderHandler 的 handler 方法中被处理，处理的方法是调用 handleUpdateLocation 方法，该方法中会调用 native_inject_location 方法以注入。
+而 LocationManagerService 的 handleLocationChangedLocked 的方法会将最新的位置存放到 mLastKnownLocation 中。至此，便可以通过 LocationManagerService 的 getLastKnownLocation 方法获取到最新更新的位置信息了。
+下面是上述的逻辑顺序图。由于调用过程比较复杂，所以分成了两部分。 图 4 描述了上述步骤的 1 ～ 4，图 5 描述了上述步骤的 4 ～ 6
+
+图 4. 位置更新后的调用关系（前半部分）
+
+查看大图
+
+图 5. 位置更新后的调用关系（后半部分）
+
+查看大图
+
+最后，我们来总结一下定位服务的实现牵涉到的文件及所处路径，它们如表 13 所示。
+
+表 13. 定位服务实现中牵涉到的文件一览
+路径
+frameworks/base/location/java/android
+frameworks/base/services/java/com/android/server
+frameworks/base/core/java/android/os
+frameworks/base/core/java/android/app
+system/core/rootdir
+frameworks/base/services/java/com/android/server/location
+frameworks/base/services/jni
+hardware/libhardware/include/hardware
+hardware/qcom/gps
+前面我们说了，在 Android 系统中，所有的系统服务的实现结构都是类似的。相信读者在理解了定位服务的实现之后再去理解其他的系统服务是比较容易的。
+
+相关主题
+Android Open Source Project：Android Source 官方网站
+Android Binder：详细讲解了 Android 中的 Binder 机制
+android.location API doc：Android 官方开发网站上的 API doc
+The init process and init.rc：介绍 Android 系统的 init 进程和 init.rc 文件
+Bound Service：介绍 Android 系统的 Bound Service 机制
+随时关注 developerWorks 技术活动和网络广播。
+访问 developerWorks Open source 专区获得丰富的 how-to 信息、工具和项目更新以及最受欢迎的文章和教程，帮助您用开放源码技术进行开发，并将它们与 IBM 产品结合使用。
