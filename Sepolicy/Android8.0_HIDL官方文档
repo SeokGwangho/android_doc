@@ -1,0 +1,248 @@
+Android HIDL 官方文档（六）—— 使用 Binder 进程间通信机制（Using Binder IPC）
+
+
+1. Binder 驱动的改变
+1.1 多个 Binder 域（上下文）
+1.2 散集列表
+1.3 更细化地加锁
+1.4 实时优先级继承
+1.5 用户空间更改
+1.6 公共内核中的一些 SHA
+2. 使用 Binder IPC
+2.1 vndbinder
+2.2 vndservicemanager
+3. SELinux 策略
+3.1 服务名称
+3.2 服务标签
+3.3 服务管理者规则
+对应的官方文档地址：HIDL(General) - Using Binder IPC
+This page describes changes to the binder driver in Android O, provides details on using binder IPC, and lists required SELinux policy.
+
+        这一章节描述了 Android O 中关于 Binder 的一些变化，提供了使用 Binder IPC 机制的细节，以及列出了一些所需要的 SELinux 相关策略。
+
+1. Binder 驱动的改变
+（Changes to binder driver）
+
+Starting in Android O, the Android framework and HALs now communicate with each other using binder. As this communication dramatically increases binder traffic, Android O includes several improvements designed to keep binder IPC fast. SoC vendors and OEMs integrating the latest version of the driver should review the list of these improvements, relevant SHAs for the 3.18, 4.4, and 4.9 kernels, and required userspace changes.
+
+       从 Android O 开始，Android 框架层与 HAL 层之间就要通过 Binder 机制来进行通讯。这导致通过 Binder 传输的数据流量大大提升，为了保持 Binder IPC 的高效，Android O 中对 Binder 进行了一些能可提升性能的修改。集成了最新版本驱动的 SoC 供应商 与 OEM 应查看所列出的相应的改进，关于用于 3.18、4.4 与 4.9 内核的 SHA，以及所需求的用户空间的修改。
+
+1.1 多个 Binder 域（上下文）
+（Multiple binder domains (contexts)） 
+In common-3.10, common-3.18, common-4.4, common-4.9, and upstream
+
+       在 common-3.10, common-3.18, common-4.4, common-4.9 以及更上游的版本中。
+
+To cleanly split the binder traffic between framework (device-independent) and vendor (device-specific) code, Android O introduces the concept of a binder context. Each binder context has its own device node and its own context (service) manager. You can access the context manager only through the device node to which it belongs and, when passing a binder node through a certain context, it is accessible from that same context only by another process, thus completely isolating the domains from each other. For details on using, see vndbinder and vndservicemanager.
+
+       为了明确划分框架（独立于设备）和供应商（特定于设备）代码之间的 Binder 流量，Android O 介绍了一个 Binder 上下文的概念。每个 Binder 上下文都拥有自己的设备节点以及上下文（服务）管理者。当您通过某个上下文传递 Binder 节点时，您只能通过它所属的设备节点来访问对应的上下文管理器，它只能通过另一个进程来访问，从而使得各个域完全隔离。更多详细信息在 vndbinder 和 vndservicemanager 小节中有描述。
+
+1.2 散集列表
+（Scatter-gather） 
+In common-3.10, common-3.18, common-4.4, common-4.9, and upstream
+
+       在 common-3.10, common-3.18, common-4.4, common-4.9 以及更上游的版本中。
+
+In previous releases of Android, every piece of data in a binder call was copied three times:
+
+Once to serialize it into a Parcel in the calling process
+Once in the kernel driver to copy the Parcel to the target process
+Once to unserialize the Parcel in the target process
+       在以往的 Android 版本中，Binder 调用的每一个数据都会被复制三次：
+
+一次是在调用的进程中将数据序列化为一个 Parcel。
+一次是在内核驱动中将 Parcel 拷贝给目标进程。
+一次是在目标进程中将 Parcel 反序列化。
+Android O uses scatter-gather optimization to reduce the number of copies from 3 to 1. Instead of serializing data in a Parcel first, data remains in its original structure and memory layout and the driver immediately copies it to the target process. After the data is in the target process, the structure and memory layout is the same and the data can be read without requiring another copy.
+
+       Android O 采用散集优化的方式将拷贝次数从三次减少到一次。数据保持原本的结构与内存布局，而驱动则立即将其复制到目标进程中，这样第一次拷贝操作就省下了。当数据到达目标进程中，其结构与内存布局是不变的，因此可以不需要另外的拷贝操作就读取数据（将序列化与反序列化过程去掉了）。
+
+1.3 更细化地加锁
+（Fine-grained locking） 
+In common-3.18, common-4.4, common-4.9, and upstream
+
+       在 common-3.18, common-4.4, common-4.9 以及更上游的版本中。
+
+In previous Android releases, the binder driver used a global lock to protect against concurrent access to critical data structures. While there was minimal contention for the lock, the main problem was that if a low-priority thread obtained the lock and then got preempted, it could seriously delay higher-priority threads needing to obtain the same lock. This caused jank in the platform.
+
+       在以往的 Android 版本中， Binder 驱动会使用一个全局的锁来防止对于关键数据结构的并发访问。虽然对于锁的抢夺情况很少，但主要的问题在于，如果一个低优先级线程获得了锁，随后被抢占，它就会使需要获得相同锁的高优先级线程严重地延迟。这在平台中导致了 jank（PS：我不知道是什么东西） 这种情况。
+
+Initial attempts to resolve this problem involved disabling preemption while holding the global lock. However, this was more of a hack than a true solution, and was eventually rejected by upstream and discarded. Subsequent attempts focused on making locking more fine-grained, a version of which has been running on Pixel devices since January 2017. While the majority of those changes were made public, substantial improvements were made in future versions.
+
+       最初，通过尝试在持有全局锁时禁用抢占来解决这个问题。然而这更像是一种 “hack” 行为，而非真正的解决方案，并且最终被更上游的版本所拒绝与弃用。随后进行的尝试专注于更细化地加锁，自 2017 年 1 月开始，这一版本一直在 Pixel 设备上运行。目前主要的改动已经发布到公开版本中，在以后的版本中还会继续有大量的改进加入其中。
+
+After identifying small issues in the fine-grained locking implementation, we devised an improved solution with a different locking architecture and submitted the changes in the 3.18, 4.4, and 4.9 common branches. We continue to test this implementation on a large number of different devices; as we are unaware of any outstanding issues, this is the recommended implementation for devices shipping with Android O.
+
+       在解决了实现细粒度锁中的一些问题之后，我们设计了一个改进的解决方案，它采用不同的锁架构，这个更改方案已经提交到 3.18，4.4，4.9 common 分支中。我们继续要大量不同的设备上测试了这一实现，没有发现任何突出的问题，因此目前这是 Android O 的推荐实现方案。
+
+Note: We strongly encourage budgeting sufficient testing hours for fine-grained locking.
+
+       注意：我们强烈建议为细粒度锁制定足够的测试时间。
+
+1.4 实时优先级继承
+（Real-time priority inheritance） 
+In common-3.18, common-4.4, common-4.9 (upstream coming soon)
+
+       在 common-3.18, common-4.4, common-4.9 （上游版本即将开放）
+
+The binder driver has always supported nice priority inheritance. As an increasing number of processes in Android run at real-time priority, in some cases it now makes sense that if a real-time thread makes a binder call, the thread in the process that handles that call also runs at real-time priority. To support these use cases, Android O now implements real-time priority inheritance in the binder driver.
+
+       Binder 驱动一直很好地支持优先级继承。随着越来越多的 Android 进程在实时优先级运行，某些情况下，如果一个实时线程发出一个 Binder 调用，则处理该调用的进程中的线程也会在实时优先级中运行。为了支持这些用例，Android O 在 Binder 驱动程序中实现了实时优先继承。
+
+In addition to transaction-level priority inheritance, node priority inheritance allows a node (binder service object) to specify a minimum priority at which calls into this node should be executed. Previous versions of Android already supported node priority inheritance with nice values, but Android O adds support for real-time scheduling policies node inheritance.
+
+       除了事务级的优先级继承以外，节点优先级继承允许节点（Binder 服务对象）指定一个最低优先级，该节点应执行调用该节点的请求。在以前的 Android 版本中，已经很好地支持了节点优先级继承，而 Android O 则增加了对于实时调度策略节点继承的支持。
+
+Note: The Android performance team found that real-time priority inheritance caused unwanted side-effects in the framework binder domain (/dev/binder), so real-time priority inheritance is disabled for that domain.
+
+       注意： Android 性能团队发现，实时优先级继承在框架的 Binder 域（/dev/binder）中造成了不必要的副作用，所以在该域中，实时优先级继承是被禁用的。
+
+1.5 用户空间更改
+（Userspace changes）
+
+Android O includes all userspace changes required to work with the current binder driver in the common kernel with one exception: The original implementation to disable real-time priority inheritance for /dev/binder used an ioctl. Subsequent development switched control of priority inheritance to a more fine-grained method that is per binder mode (and not per context). Thus, the ioctl is not in the Android common branch and is instead submitted in our common kernels.
+
+       Android O 中包含了所有需要的用户空间更改，这些变化需要与公共内核中的当前 Binder 驱动一起工作，但有一个例外：原始的实现中采用一个 ioctl 操作禁用 /dev/binder 的实时优先级继承。随后的开发会将优先级继承转换为一种更具细粒度的方法，即每个 Binder 模式（而非每个上下文）。因此，ioctl 在我们的公共内核中，而不是在 Android 公共分支中提交。
+
+The effect of this change is that real-time priority inheritance is disabled by default for every node. The Android performance team has found it beneficial to enable real-time priority inheritance for all nodes in the hwbinder domain. To achieve that same effect, cherry-pick this change in userspace.
+
+       这些关于实时优先级继承的改变的效果，在默认情况下对于每个节点都是禁用的。Android 性能团队发现，在 hwbinder 域中启用实时优先级继承是有好处的。为实现同样的效果，需要在用户空间中选择这个更改。
+
+1.6 公共内核中的一些 SHA
+（SHAs for common kernels）
+
+To obtain necessary changes to the binder driver, sync to the SHAs below (or later):
+
+Common-3.18 
+cc8b90c121de ANDROID: binder: don’t check prio permissions on restore.
+Common-4.4 
+76b376eac7a2 ANDROID: binder: don’t check prio permissions on restore.
+Common-4.9 
+ecd972d4f9b5 ANDROID: binder: don’t check prio permissions on restore.
+       为了获得必要的关于 Binder 驱动的更改，需要同步下面这些 SHA：
+
+Common-3.18 
+cc8b90c121de ANDROID: binder: don’t check prio permissions on restore.
+Common-4.4 
+76b376eac7a2 ANDROID: binder: don’t check prio permissions on restore.
+Common-4.9 
+ecd972d4f9b5 ANDROID: binder: don’t check prio permissions on restore.
+2. 使用 Binder IPC
+（Using binder IPC）
+
+Historically, vendor processes have used binder interprocess communication (IPC) to communicate. In Android O, the /dev/binder device node becomes exclusive to framework processes, meaning vendor processes no longer have access to it. Vendor processes can access /dev/hwbinder, but must convert their AIDL interfaces to use HIDL. For vendors who want to continue using AIDL interfaces between vendor processes, Android supports binder IPC as described below.
+
+       从以往的情况来看，供应商进程使用 Binder 进程间通讯机制进行通信，在 Android O 中，/dev/binder 设备节点成为了独立于框架进程的存在，这就意味着供应商进程不能再访问它。供应商进程可以访问 /dev/hwbinder，但必须将它们的 AIDL 接口转换为 HIDL 接口。对于需要继续在供应商进程间使用 AILD 接口的供应商，Android 支持如下所述的 Binder IPC。
+
+2.1 vndbinder
+Android O supports a new binder domain for use by vendor services, accessed using /dev/vndbinder instead of /dev/binder. With the addition of /dev/vndbinder, Android now has the following three IPC domains:
+
+IPC Domain	Description
+/dev/binder	IPC between framework/app processes with AIDL interfaces
+/dev/hwbinder	IPC between framework/vendor processes with HIDL interfaces
+IPC between vendor processes with HIDL interfaces
+/dev/vndbinder	IPC between vendor/vendor processes with AIDL Interfaces
+       Android O 支持由供应商服务所使用的一个新的域，使用 /dev/vndbinder 代替对 /dev/binder 的访问。在添加 /dev/vndbinder 之后，目前 Binder IPC 共有以下三个域：
+
+IPC 域	相关信息
+/dev/binder	framework/app 进程与 AIDL 接口之间的 IPC
+/dev/hwbinder	framework/vendor 进程与 HIDL 接口之间的 IPC
+vendor 进程与 HIDL 接口之间的 IPC
+/dev/vndbinder	vendor/vendor 进程与 AIDL 接口之间的 IPC
+For /dev/vndbinder to appear, ensure the kernel configuration item CONFIG_ANDROID_BINDER_DEVICES is set to “binder,hwbinder,vndbinder” (this is the default in Android’s common kernel trees).
+
+       对于 /dev/vndbinder 的出现，确保 CONFIG_ANDROID_BINDER_DEVICES 这一内核配置项被设置为 binder,hwbinder,vndbinder（这在 Android 公共内核树中是默认的）。
+
+Normally, vendor processes don’t open the binder driver directly and instead link against the libbinder userspace library, which opens the binder driver. Adding a method for ::android::ProcessState() selects the binder driver for libbinder. Vendor processes should call this method before calling into ProcessState, IPCThreadState, or before making any binder calls in general. To use, place the following call after the main() of a vendor process (client and server):
+
+       通常供应商进程不会直接打开 Binder 驱动，而是连接到 libbinder 用户空间库去，这个库打开了 Binder 驱动。加入一个方法为 ::android::ProcessState() 选择用于 libbinder 的 Binder 驱动程序。在供应商进程调用 ProcessState， IPCThreadState 或对任何 Binder 的一般性调用之前，这一方法就应该被调用了。要使用它，则请在供应商进程（客户端和服务端）的主函数之后进行如下调用：
+
+ProcessState::initWithDriver("/dev/vndbinder");
+2.2 vndservicemanager
+Previously, binder services were registered with servicemanager, where they could be retrieved by other processes. In Android O, servicemanager is now used exclusively by framework and app processes and vendor processes can no longer access it.
+
+       在以前，Binder 驱动会注册到 servicemanager 中，这样它可以被其它进程获取。而在 Android O 中，servicemanager 目前已经完全只由框架与应用程序来使用，而供应商进程已经无法访问它。
+
+However, vendor services can now use vndservicemanager, a new instance of servicemanager that uses /dev/vndbinder instead of /dev/binder and which is built from the same sources as framework servicemanager. Vendor processes do not need to make changes to talk to vndservicemanager; when a vendor process opens /dev/vndbinder, service lookups automatically go to vndservicemanager.
+
+       供应商服务现在可以使用 vndservicemanager，这是用 /dev/vndbinder 代替了 /dev/binder 而构成的新的 servicemanager 实例，它与框架层的 servicemanager 是用同一源码所构建的。供应商进程不需要为了与 vndservicemanager 进行通讯而做出更改，当供应商进程打开 /dev/vndbinder 后，服务就会自动查找到 vndservicemanager。
+
+The vndservicemanager binary is included in Android’s default device makefiles.
+
+       vndservicemanager 的二进制文件已经包含在 Android 默认的设备 makefile 中。
+
+3. SELinux 策略
+（SELinux policy）
+
+Vendor processes that want to use binder functionality to communicate with each other need the following:
+
+Access to /dev/vndbinder.
+Binder {transfer, call} hooks into vndservicemanager.
+binder_call(A, B) for any vendor domain A that wants to call into vendor domain B over the vendor binder interface.
+Permission to {add, find} services in vndservicemanager.
+       需要使用 Binder 的功能以同其它进程通讯的供应商进程需要以下几个条件：
+
+访问 /dev/vndbinder。
+Binder 的钩子函数 {transfer, call} 设置到 vndservicemanager 中。
+binder_call(A, B) 用于想要通过供应商 Binder 接口来调用到供应商域 B 的供应商域 A。
+在 vndservicemanager 中获得 {add, find} 的服务权限。
+To fulfill requirements 1 and 2, use the vndbinder_use() macro:
+
+       为完成第一第二个需求，则要使用到宏 vndbinder_use()：
+
+vndbinder_use(some_vendor_process_domain);
+To fulfill requirement 3, the binder_call(A, B) for vendor processes A and B that need to talk over binder can stay in place, and doesn’t need renaming.
+
+       为完成第三个需求，对供应商进程 A 和 B 的 binder_call(A, B) 可以保持在一个恰当的位置，并不需要重命名。
+
+To fulfill requirement 4, you must make changes in the way service names, service labels, and rules are handled.
+
+       为完成第四个需求，您必须对服务名称，服务标签与规则的方式进行更改。
+
+For details on SELinux, see Security-Enhanced Linux in Android. For details on SELinux in Android 8.0, see SELinux for Android 8.0.
+
+       对于 SELinux 的更详细的细节，可以阅读 Android 中的安全增强型 Linux。对于 Android O 的 SELinux，可以参看 Android 8.0 的安全增强型 Linux。
+
+3.1 服务名称
+（Service names） 
+Previously, vendor processes registered service names in a service_contexts file and added corresponding rules for accessing that file. Example service_contexts file from device/google/marlin/sepolicy:
+
+       在之前，供应商进程将服务名称注册到 service_contexts 文件中，并且会增加相应的访问该文件的规则。一个关于 device/google/marlin/sepolicy 的 service_contexts 文件的例子：
+
+AtCmdFwd                              u:object_r:atfwd_service:s0
+cneservice                            u:object_r:cne_service:s0
+qti.ims.connectionmanagerservice      u:object_r:imscm_service:s0
+rcs                                   u:object_r:radio_service:s0
+uce                                   u:object_r:uce_service:s0
+vendor.qcom.PeripheralManager         u:object_r:per_mgr_service:s0
+In Android O, vndservicemanager loads the vndservice_contexts file instead. Vendor services migrating to vndservicemanager (and which are already in the old service_contexts file) should be added to the new vndservice_contexts file.
+
+       在 Android O 中，采用 vndservicemanager 来加载 vndservice_contexts 文件以替代上述过程。迁移到 vndservicemanager 中的供应商服务应该增加到相应的 vndservice_contexts 文件中。
+
+3.2 服务标签
+（Service labels） 
+Previously, service labels such as u:object_r:atfwd_service:s0 were defined in a service.te file. Example:
+
+       以往的服务标签，比如 u:object_r:atfwd_service:s0 会定义在一个 service.te 文件中，如下：
+
+type atfwd_service,      service_manager_type;
+In Android O, you must change the type to vndservice_manager_type and move the rule to the vndservice.te file. Example:
+
+       在 Android O 中，您必须将类型改变为 vndservice_manager_type ，并且将规则移动到 vndservice.te 文件中，如下：
+
+type atfwd_service,      vndservice_manager_type;
+3.3 服务管理者规则
+（Servicemanager rules）
+
+Previously, rules granted domains access to add or find services from servicemanager. Example:
+
+       以前，规则授权域访问从 servicemanager 添加或查找服务，比如：
+
+allow atfwd atfwd_service:service_manager find;
+allow some_vendor_app atfwd_service:service_manager add;
+In Android O, such rules can stay in place and use the same class. Example:
+
+       在 Android O 中，这样的设置可以不被更改，保持原位，比如：
+
+allow atfwd atfwd_service:service_manager find;
+allow some_vendor_app atfwd_service:service_manager add;
