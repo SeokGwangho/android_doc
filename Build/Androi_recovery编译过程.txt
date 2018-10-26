@@ -1,0 +1,16 @@
+recovery image的最主要功能就是，制作升级包。
+
+问：那么，升级包是如何编译出来的？
+解：
+升级包编译命令：
+1.source build/envsetup.sh 
+2.lunch xxx_target
+3.make
+
+注意：
+有些平台可能没有将“recovery.image”、“boot.img”等目标,添加为“xxx_target”目标的依赖!
+而xxx_target目标,必定会依赖“boot.img”和“recovery.img”这些文件，
+这时就需要先执行编译对应image文件的命令, 之后才能使“make xxx_target”命令顺利执行最终生成升级包!
+
+
+
