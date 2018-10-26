@@ -1,6 +1,7 @@
 recovery image的最主要功能就是，制作升级包。
 
 问：那么，升级包是如何编译出来的？
+
 解：
 升级包编译命令：
 1.source build/envsetup.sh 
@@ -12,5 +13,140 @@ recovery image的最主要功能就是，制作升级包。
 而xxx_target目标,必定会依赖“boot.img”和“recovery.img”这些文件，
 这时就需要先执行编译对应image文件的命令, 之后才能使“make xxx_target”命令顺利执行最终生成升级包!
 
+---------------------------------------------------------------------------------------------
+recovery.img生成过程：
+---------------------------------------------------------------------------------------------
+   (From: build/core/Makefile)
+　　
+630 $(INSTALLED_RECOVERYIMAGE_TARGET): $(MKBOOTFS) $(MKBOOTIMG) $(MINIGZIP) /
+631 $(INSTALLED_RAMDISK_TARGET) /
+632 $(INSTALLED_BOOTIMAGE_TARGET) /
+633 $(recovery_binary) /
+634 $(recovery_initrc) $(recovery_kernel) /
+635 $(INSTALLED_2NDBOOTLOADER_TARGET) /
+636 $(recovery_build_prop) $(recovery_resource_deps) /
+637 $(RECOVERY_INSTALL_OTA_KEYS)
+　　
 
+INSTALLED_RECOVERYIMAGE_TARGET 为我们的编译目标：
+　　584 INSTALLED_RECOVERYIMAGE_TARGET := $(PRODUCT_OUT)/recovery.img
+  
+  
+它依赖很多其它目标：
+1．MKBOOTFS, MINIGZIP, MKBOOTIMG，PC端工具软件：
+  （From build/core/config.mk）
 
+265 MKBOOTFS  := $(HOST_OUT_EXECUTABLES)/mkbootfs$(HOST_EXECUTABLE_SUFFIX)
+266 MINIGZIP  := $(HOST_OUT_EXECUTABLES)/minigzip$(HOST_EXECUTABLE_SUFFIX)
+267 MKBOOTIMG := $(HOST_OUT_EXECUTABLES)/mkbootimg$(HOST_EXECUTABLE_SUFFIX)
+　
+2．INSTALLED_RAMDISK_TARGET，标准根文件系统 ramdisk.img：
+    326 BUILT_RAMDISK_TARGET := $(PRODUCT_OUT)/ramdisk.img
+    328 # We just build this directly to the install location.
+    329 INSTALLED_RAMDISK_TARGET := $(BUILT_RAMDISK_TARGET) 
+  
+  
+3．INSTALLED_BOOTIMAGE_TARGET， 即boot.img,标准内核及标准根文件系统：
+    362 INSTALLED_BOOTIMAGE_TARGET := $(PRODUCT_OUT)/boot.img
+
+4. recovery_binary, Recovery可执行程序，源码位于：bootable/recovery
+　　590 recovery_binary := $(call intermediates-dir-for,EXECUTABLES,recovery)/recovery
+
+5. recovery_initrc，recovery模式的init.rc, 位于 bootable/recovery/etc/init.rc
+　　586 recovery_initrc := $(call include-path-for, recovery)/etc/init.rc
+
+6. recovery_kernel, recovery 模式的kernel, 同标准内核
+　　587 recovery_kernel := $(INSTALLED_KERNEL_TARGET) # same as a non-recovery system
+
+7.INSTALLED_2NDBOOTLOADER_TARGET，我们不用。
+
+8. recovery_build_prop， recovery 模式的build.prop, 同标准模式。
+    589 recovery_build_prop := $(INSTALLED_BUILD_PROP_TARGET)
+
+9. recovery_resource_deps， recovery 模式使用的res, 位于：recovery/custom/{product_name}/res, 以及设备自定义部分（我们没用到）
+    591 recovery_resources_common := $(call include-path-for, recovery)/custom/$(TARGET_PRODUCT)/res
+    592 recovery_resources_private := $(strip $(wildcard $(TARGET_DEVICE_DIR)/recovery/res))
+    593 recovery_resource_deps := $(shell find $(recovery_resources_common) 594 $(recovery_resources_private) -type f) 
+  
+10. RECOVERY_INSTALL_OTA_KEYS, ota 密钥：
+    618 # Generate a file containing the keys that will be read by the
+    619 # recovery binary.
+    620 RECOVERY_INSTALL_OTA_KEYS := /
+    621 $(call intermediates-dir-for,PACKAGING,ota_keys)/keys
+    L638-L655 准备内容
+    638 @echo ----- Making recovery image ------
+    639 rm -rf $(TARGET_RECOVERY_OUT)
+    640 mkdir -p $(TARGET_RECOVERY_OUT)
+    641 mkdir -p $(TARGET_RECOVERY_ROOT_OUT)
+    642 mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/etc
+    643 mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/tmp
+    准备recovery目录：out/target/product/{product_name}/recovery 及其子目录：
+　　./root
+　　./root/etc
+　　./root/tmp
+    644 echo Copying baseline ramdisk...
+    645 cp -R $(TARGET_ROOT_OUT) $(TARGET_RECOVERY_OUT)
+    646 echo Modifying ramdisk contents...
+    647 rm -rf $(TARGET_RECOVERY_ROOT_OUT)/res    //从标准根文件系统拷贝所有文件， 删除其res 目录。
+  
+  
+    648 cp -f $(recovery_initrc) $(TARGET_RECOVERY_ROOT_OUT)/
+    649 cp -f $(recovery_binary) $(TARGET_RECOVERY_ROOT_OUT)/sbin/ //拷贝recovery 模式的核心文件 init.rc 及 recovery 
+    650 cp -rf $(recovery_resources_common) $(TARGET_RECOVERY_ROOT_OUT)/
+    651 $(foreach item,$(recovery_resources_private), /
+    652 cp -rf $(item) $(TARGET_RECOVERY_ROOT_OUT)/)
+    653 cp $(RECOVERY_INSTALL_OTA_KEYS) $(TARGET_RECOVERY_ROOT_OUT)/res/keys 拷贝资源文件及密钥文件。 
+    654 cat $(INSTALLED_DEFAULT_PROP_TARGET) $(recovery_build_prop) /
+    655 > $(TARGET_RECOVERY_ROOT_OUT)/default.prop 生成属性文件 default.prop, 
+        它包含了标准根文件系统的default.prop （out/target/product/{product_name}/root/default.prop）以及
+                   system分区的build.prop (out/target/product/{product_name}/system/build.prop) 
+                   
+L656-L661 最终生成recovery.img
+656 $(MKBOOTFS) $(TARGET_RECOVERY_ROOT_OUT) | $(MINIGZIP) > $(recovery_ramdisk) 压缩recovery根文件系统 
+657 build/quacomm/mkimage $(PRODUCT_OUT)/ramdisk-recovery.img RECOVERY > $(PRODUCT_OUT)/ramdisk_recovery.img 加一个标识头（RECOVERY） 
+658 mv $(PRODUCT_OUT)/ramdisk_recovery.img $(PRODUCT_OUT)/ramdisk-recovery.img
+659 $(MKBOOTIMG) $(INTERNAL_RECOVERYIMAGE_ARGS) --output $@
+660 @echo ----- Made recovery image -------- $@
+661 $(hide) $(call assert-max-image-size,$@,$(BOARD_RECOVERYIMAGE_PARTITION_SIZE),raw)
+-------------------------------------------------------------
+和内核一起，生成recovery.img：
+-------------------------------------------------------------
+附：Recovery 根文件系统目录结构　　
+　　$ tree
+　　.
+　　├── advanced_meta_init.rc
+　　├── data
+　　├── default.prop
+　　├── dev
+　　├── etc
+　　├── init
+　　├── init.factory.rc
+　　├── init.goldfish.rc
+　　├── init.quacomm.rc
+　　├── init.rc
+　　├── meta_init.rc
+　　├── proc
+　　├── res
+　　│ ├── images
+　　│ │ ├── icon_error.png
+　　│ │ ├── icon_installing.png
+　　│ │ ├── indeterminate1.png
+　　│ │ ├── indeterminate2.png
+　　│ │ ├── indeterminate3.png
+　　│ │ ├── indeterminate4.png
+　　│ │ ├── indeterminate5.png
+　　│ │ ├── indeterminate6.png
+　　│ │ ├── progress_empty.png
+　　│ │ └── progress_fill.png
+　　│ └── keys
+　　├── sbin
+　　│ ├── adbd
+　　│ ├── advanced_meta_init
+　　│ ├── meta_init
+　　│ ├── meta_tst
+　　│ └── recovery
+　　├── sys
+　　├── system
+　　└── tmp
+ ---------------------------------------------------------------
+ 
