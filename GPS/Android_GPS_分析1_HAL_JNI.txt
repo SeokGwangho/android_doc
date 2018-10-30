@@ -2,12 +2,15 @@ Android系统的GPS分析1(JNI,HAL)
 			shiguanghu
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //先来个整个流程的概括：
-Step0: 
-	Board启动时：
-Step1:
-	
-Step2:
-	HAL的open_gps--->
+
+Step0: 先实现JNI，HAL层的代码
+
+Step1: Board启动时： Init进程---->Zygote进程---->SystemService进程---->JNI_Onload()
+		    onload.cpp: JNI_OnLoad() ---> register_android_server_location_GpsLocationProvider()
+		    JNI初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。
+		    这就是上层能Call到JNI层的原因。
+                    JNI和HAL这俩层，靠 const GpsInterface* 来交互: 即在HAL层定义的GpsInterface的实体变量sLocEngInterface。
+Step2: HAL的open_gps--->
 
 //
 GPSInterface实体在gps_device_t里，gps_device_t在
@@ -225,7 +228,6 @@ gps_module_methods定义了设备的open函数open_gps，看open_gps函数：
 问： 既然在使用设备之前，必须先执行掉这个.open()函数指针，那么确切的被执行的时机是什么时候？？
 答： 
 
-
 	    static int open_gps(const struct hw_module_t* module, char const* name, struct hw_device_t** device)  
 	    {  
 		struct gps_device_t *dev = malloc(sizeof(struct gps_device_t)); 	//
@@ -246,7 +248,7 @@ gps__get_gps_interface()定义如下：
 			return get_gps_interface();  //内部return &sLocEngInterface;
 	    }  
 
-		此函数返回了gps/loc_eng.cpp文件的 sLocEngInterface 变量，
+		此函数返回了gps/loc_eng.cpp文件的 sLocEngInterface 变量(HAL层的GpsInterface实体变量)，
 		---------------------------------------------------------------- 也就是上层要首先拿到了这个( GpsInterface 的实例)。
 		sLocEngInterface定义如下：
 		    // Defines the GpsInterface in gps.h  
@@ -264,7 +266,7 @@ gps__get_gps_interface()定义如下：
 			loc_eng_get_extension,  
 		    };  
 
-		sLocEngInterface( GpsInterface 的实例)指定了GpsInterface结构的各个回调函数，如启动定位/取消定位等，
+		sLocEngInterface(GpsInterface实体)指定了GpsInterface结构的各个回调函数，如启动定位/取消定位等，
 		这些回调函数的实现均在loc_eng.cpp中实现
 		
 		(自己的HAL里也需要实现这些interface了)。
@@ -276,42 +278,41 @@ gps__get_gps_interface()定义如下：
 --------------------------
 1.3 JNI适配层 (也需要实现来着？)
 --------------------------
+	GPS JNI适配层的源码位于：frameworks/base/services/jni/com_android_server_location_GpsLocationProvider.cpp
 
- 		GPS JNI适配层的源码位于：frameworks/base/services/jni/com_android_server_location_GpsLocationProvider.cpp
-			
-		    首先看注册JNI方法的函数定义：
-		    int register_android_server_location_GpsLocationProvider(JNIEnv* env)  
-		    {
-			//跟其他module的JNI方法注册一样了
-			return jniRegisterNativeMethods(env, "com/android/server/location/GpsLocationProvider", sMethods, NELEM(sMethods));  //注意第三个参数
-		    }  
-
-
-			此函数被同目录下onload.cpp文件调用，调用地方在：
-
-		    extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved)  
-		    {  
-			JNIEnv* env = NULL;  
-			jint result = -1;  
-		      
-			if (vm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {  
-			    LOGE("GetEnv failed!");  
-			    return result;  
-			}  
-			LOG_ASSERT(env, "Could not retrieve the env!");  
-			...  
-			...  
-			register_android_server_location_GpsLocationProvider(env);  
-		      
-			return JNI_VERSION_1_4;  
-		    }  
-     ----------------------------------------JNI初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。
+	    首先看注册JNI方法的函数定义：
+	    int register_android_server_location_GpsLocationProvider(JNIEnv* env)  
+	    {
+		//跟其他module的JNI方法注册一样了
+		return jniRegisterNativeMethods(env, "com/android/server/location/GpsLocationProvider", sMethods, NELEM(sMethods));  //注意第三个参数
+	    }  
 
 
+	   此函数被同目录下onload.cpp文件调用，调用地方在：
+
+	    extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved)  
+	    {  
+		JNIEnv* env = NULL;  
+		jint result = -1;  
+
+		if (vm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {  
+		    LOGE("GetEnv failed!");  
+		    return result;  
+		}  
+		LOG_ASSERT(env, "Could not retrieve the env!");  
+		...  
+		...  
+		register_android_server_location_GpsLocationProvider(env);  
+
+		return JNI_VERSION_1_4;  
+	    }  
+     -------------------------------------------------------------------------------------------------------
+     Init进程--->Zygote进程--->ServiceManager进程--->JNI初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。
+     -------------------------------------------------------------------------------------------------------
 回到JNI方法注册函数 register_android_server_location_GpsLocationProvider()函数，变量sMethods[]定义如下：
 
 
-    static JNINativeMethod sMethods[] = {  
+    static JNINativeMethod sMethods[] = {
          /* name,                                signature(签名),                                   funcPtr */
   
         {"class_init_native",			"()V", 				(void*)android_location_GpsLocationProvider_class_init_native},  
@@ -339,22 +340,23 @@ gps__get_gps_interface()定义如下：
         {"native_get_internal_state",		"()Ljava/lang/String;",		(void*)android_location_GpsLocationProvider_get_internal_state},  
         {"native_update_network_state",		"(ZIZLjava/lang/String;)V",	(void*)android_location_GpsLocationProvider_update_network_state },  
     };  
-
-
-	sMetthods[]定义了[GPS所有向上层提供的JNI本地方法]，
-	这些本地方法又是如何与硬件适配层(HAL)交互的？ 看其中一个本地方法 android_location_GpsLocationProvider_start()
 ------------------------------------------------------------------------
-（//也就是说，JNI层和HAL层就靠这个 const GpsInterface* 来交互 ）
+sMetthods[]定义了[GPS的所有的向上层提供的JNI本地方法]。
+-------------------------------------------------------
+这些JNI本地方法，又是如何与硬件适配层(HAL)交互的？ 
 ------------------------------------------------------------------------
-		    static jboolean android_location_GpsLocationProvider_start(JNIEnv* env, jobject obj)  
-		    {  
-			const GpsInterface* interface = GetGpsInterface(env, obj);  	//拿到了GpsInterface实体!
-			if (interface)  
-			    return (interface->start() == 0);  				//loc_enc_start()
-			else  
-			    return false;  
-		    }  
-
+    看其中一个本地方法 android_location_GpsLocationProvider_start()
+    static jboolean android_location_GpsLocationProvider_start(JNIEnv* env, jobject obj)  
+    {  
+	const GpsInterface* interface = GetGpsInterface(env, obj);  	//拿到了GpsInterface实体!
+	if (interface)  
+	    return (interface->start() == 0);  				//loc_enc_start()
+	else  
+	    return false;  
+    }  
+----------------------------------------------------------------------------------------------------------
+也就是说，JNI和HAL这俩层，其实就靠这个 const GpsInterface* 来交互: 也即HAL层定义的GpsInterface实体变量sLocEngInterface
+----------------------------------------------------------------------------------------------------------
 	它调用了GetGpsInterface()获得GpsInterface实体地址，然后直接调用该接口的start回调函数。GetGpsInterface方法定义如下：
 
 			    static const GpsInterface* GetGpsInterface(JNIEnv* env, jobject obj) {  
@@ -399,6 +401,10 @@ gps__get_gps_interface()定义如下：
 ==============================================================================================================================
 最后返回硬件适配层中loc_eng.cpp文件的sLocEngInterface，从而打通了上层到底层的通道。
 ==============================================================================================================================
+
+
+
+
 
 //稍微总结
 jboolean android_location_GpsLocationProvider_xxxxxx(JNIEnv* env, jobject obj) 		//JNINativeMethod sMethods[].xxxx function
