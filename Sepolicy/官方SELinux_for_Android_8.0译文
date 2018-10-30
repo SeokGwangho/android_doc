@@ -1,0 +1,247 @@
+----------------------------------------
+官方SELinux_for_Android_8.0译文
+----------------------------------------
+图片，去参考Google SELinux_Treble.pdf 原图。
+官方文档：https://github.com/shiguanghu/android_doc/blob/master/Sepolicy/SELinux_for_Android8.0(SELinux_Treble).pdf
+
+
+主要描述了SELinux策略在Android O版本上发生的一些变化，在Android O版本上，SELinux的客制化设计[支持SELinux策略的模块化]和[可更新性]。
+
+其设计目标是为了[芯片厂商]和[ODM厂商],能够独立的客制化SELinux配置。
+
+
+
+Android8.0 AndroidSELinux设计目标:
+Android4.4到Android7.0，SELinux策略的构建流程是将所有的策略（平台和非平台）合并在一起，最后将合并生成的文件统一放在root目录下（即boot.img）。
+但这种方式有悖于Android 8.0的预定设计目标；
+
+Android8.0设计的初衷是允许合作方可以独立的更新他们自有的策略，即在Android8.0之后Google允许合作方将自有的策略部分与系统原有的进行分离，
+如合作方可以将自有的部分解耦到vendor.img分区中，在需要更新的情况下只需更新vendor部分即可实现；
+------------------------------------------------------------------------------------------------------
+
+SELinux在Android8.0上的设计目标,包含以下：  
+------------------------------------------------------------------
+1.策略模块化:
+------------------------------------------------------------------
+在Android4.4到Android7.0，大部分SELinux策略文件都打包在根文件系统中，这样的话，策略文件改变的情况下，芯片厂商和ODM厂商,需要
+同时更新 boot.img 和 system.img 
+        （system.img只针对ab系统，因为ab系统的话，boot.img是打包在system.img镜像中的）。
+
+Android8.0之后，Google为SoC和ODM提供了新的方式，这种方式,在他们自有的SELinux策略发生变化时,仅需要修改他们自有的分区即可，如vendor.img；
+------------------------------------------------------------------
+2.策略兼容性:
+------------------------------------------------------------------
+关于Android8.0架构如下图：
+
+图1.Android分区
+system.img 包含Android 框架部分；
+boot.img 包含kernel和ramdisk；
+vendor.img 包含芯片厂商客制化代码和配置
+odm.img 包含dom厂商客制化代码和配置
+oem.img 包含oem厂商客制化部分代码和配置；
+bootloader 引导部分
+radio modem部分
+
+在Androird8.0之前，vendor、odm和omd镜像都是可选的；在这些镜像中的配置都是通过symlinks被放在boot.img和system.img中的（如/vendor>/system/vendor)。在Android8.0之后，vendor镜像被强制以镜像的形式分离出来了。
+
+这种模化设计,体现在Android分区定义上，它使得平台在升级时（system.img）不会对SoC和ODM厂商自有部分的代码和配置产生影响。
+
+
+
+
+
+------------------------------------------------------------------
+关于SELinux:
+------------------------------------------------------------------
+SELinux是通过【标签系统】来控制，主体对客体的，读/写等【访问权限】的。每个进程或者其他主体，都有一个相关联的【标签】，我们称之为【安全上下文】。
+
+这个上下文是由 user，role，type，MLS 四部分组成：
+
+type：我们也称之为domain（域），这个域，必须要在SELinux策略中进行定义,一个主体的标签，常常由对应的安全上下文文件所决定；
+
+SELinux策略也包含角色，一个角色声明了【哪些域】可以访问【哪些客体】；
+      在Andoird4.4到Android7.0的版本中，SELinxu策略文件（sepolicy，file_context.bin，property_context等）都是打包在根文件系统中的，
+      如下：
+
+      这些文件包含了【SELinxu策略规则】和【所有的标签】，包括ODM，SOC和AOSP。
+      但是在Android8.0，这些文件，将以【模块的形式】存在在不同的分区中；
+
+----------------------------------------
+Android7.x的SELinux架构：
+----------------------------------------
+a.SELinux源文件：
+----------------------------------------
+        SELinux源文件目录，结构如下：
+                external/selinux              //外部SELinux工程
+                external/selinux/libselinux
+                external/selinux/libsepol
+                chkcon
+                libsepol 
+                external/selinux/checkpolicy
+                system/sepolicy               //Android SELinux策略核心配置，包含contexts和策略文件
+----------------------------------------
+b.SELinux编译流程：
+----------------------------------------
+        SELinux策略的创建，实际上就是将
+        【AOSP策略文件】和
+        【设备制造商自定义的策略文件】合并到一起，
+        然后通过【策略编译器】编译，
+        再通过各种策略校验机制校验，
+        最终生成的一些如root/file_contexts.bin的文件，被打包到镜像中去。
+        
+        
+        设备制造商，可以通过在Boardconfig.mk文件，使用BOARD_SEPOLICY_DIRS宏定义，将自有客制化部分的策略文件包含进去。如：
+            BOARD_SEPOLICY_DIRS += device/$SoC/common/sepolicy
+            BOARD_SEPOLICY_DIRS += device/$SoC/$DEVICE/sepolicy
+
+        system/sepolicy目录下的file_contexts 和
+        BOARD_SEPOLICY_DIRS定义的策略目录，最终会编译生成 file_contexts.bin 文件。
+
+      图2.SELinux 编译流程---略
+
+sepolicy策略文件，是有多种源文件组成的，如：
+
+      图3.SELinux策略文件
+
+policy.conf是由security_classes，initial_side，...*.te，genfs_contexts和port_contexts串联生成的。
+----------------------------------------
+c.SELinux文件
+----------------------------------------
+Android设备通常包含下面这些SELinux相关的文件:
+      selinux_version
+      sepolicy : binary output after combining policy files ( security_classes ,
+      initial_sids , *. te , etc.)
+      file_contexts
+      property_contexts
+      seapp_contexts
+      service_contexts
+      system/etc/mac_permissions.xml
+----------------------------------------
+d.SELinux初始化
+----------------------------------------
+当系统启动时，SELinux并不是强制模式（enforcing mode），而是宽容模式（permissive mode）。init进程会执行以下操作：
+通过/sys/fs/selinux,从ramdisk中载入selinux策略文件到kernel中；
+切换SELinux到强制模式
+re-exec()，将SELinux域规则运用自己身上，即init进程。
+
+
+--------------------------------------------------------------------------------
+Android 8.0 SELinux设计思路
+--------------------------------------------------------------------------------
+a.第一阶段 mount
+----------------------------------------
+    在Android8.0之前，SELinux文件是通过合并自定义策略和aosp的策略。
+    在Android8.0之后，Android提供了一种方式可以将非平台的策略从aosp平台中分离出，这样合作方就可以独立的对自有部分的SELinux策略进行构建和更新。
+    解耦之后的SELinux策略文件可以存储在合作方自有的分区中（如vendor），
+    这样一来，init进程需要更早的将system、vendor分区挂在起来，这样才能保证在init初始化的时候可以尽早的读取加载SELinux文件，
+    并与保存在system目录下的核心SELinux文件合并起来，之后再将合并之后的SELinux策略加载到内核中去。
+----------------------------------------
+b.SELinux上下文标签
+----------------------------------------
+1>文件上下文
+        Android8.0对file_contexts引入了以下修改：
+                file_contexts以二进制的形式打包在镜像中，这在Android7.0以及之前的版本都是以可读的文本的形式存在的。
+                
+        Android8.0将file_contexts分离成了两个文件：
+                Plat_file_contexts：Android平台file_context除了对vendor分区进行标记之外，没有其他有关设备制造商自有的标签了。
+                平台相关的file_context必须打包到system分区，如/system/etc/selinux/plat_file_context。
+                说白了也就是从Android8.0开始，SELinux平台相关的策略文件将会打包到system分区，这个要与Android7.0进行区分，详细如下：
+                    
+                    Android7.0图1（参考Google SELinux_Treble.pdf 原图）
+                    Android8.0 图1
+                    Android8.0 图2
+
+        注！上面目录在Andrid8.0平台上的boot分区中etc目录会对system/etc目录进行映射，如下：
+                    Android8.0 图3
+
+        Nonplat_file_contexts：设备制造商的file_context必须打包在vendor分区，如/vendor/etc/selinux/nonplat_file_contexts。将会在设备启动时与plat_file_contexts一起合并，并被加载到kernel中。详细如下：
+                Android8.0 图4
+                Android8.0 图5
+
+2>属性上下文
+      同文件上下文
+
+3>服务上下文
+      同文件上下文
+
+4>seapp上下文
+      同文件上下文
+
+5>mac权限
+      同文件上下文
+----------------------------------------
+c.主体或客体标签
+----------------------------------------
+    Android8.0 可以独立更新平台（system/boot分区）和设备制造商组件（vendor分区），意味着需要清楚的定义每一个客体的标签。
+    举个例子，如果设备制造商组件（vendor分区）下有/dev/foo，平台组件也有/dev/foo，我们需要分别为不同的客体定义标签、属性、类型等其他内容；
+
+例如：
+1.针对platform和non-platform分别定义type或attribute
+    type foo, domain; → type np_foo, domain;
+
+2.针对属性和进程分别不同的属性或其他内容；
+    foo.xxx → np.foo.xxx
+    ro.foo.xxx → ro.np.foo.xxx
+    persist.foo.xxx → persist.np.foo.xxx
+
+3.针对文件分别定义不同的标签
+    由于平台（aosp）和非平台（vendor或device-specific）策略都可以为整个文件系统提供标签声明，因此我们要通过一些规则来解决SELinux冲突；
+    这里Android8.0给我们提供了一些很好的建议；
+
+>System（/system）
+    system镜像下的文件只允许通过system/sepolicy中的file_contexts、service_contexts进行定义；
+    也就是说，nonplat_file_contexts 不可以对system镜像中的对象进行标记。
+
+>Vendor（/vendor）
+
+官方文档还列举了/data，/dev等，这里不再赘述，可以查看源码了解；
+----------------------------------------
+d.SELinux 策略构建和客制化
+----------------------------------------
+    在Android8.0中，SELinux策略分离成平台（platform）和非平台（non-platform）两部分，
+    而平台策略为了给非平台作者导出特定的类型和属性，又分为平台私有（platform private）和平台公有（platform public）部分。
+
+1.平台公有策略（platform public seoplicy）
+    平台共有策略全部定义在/system/sepolicy/public下，public下的type和attribute可以被non-platform中的策略所使用，
+    也就是说，设备制造商的sepolicy作者在non-platform下可以对platform public sepolicy的策略进行扩展。
+
+2.平台私有策略（platform private seoplicy）
+    与公有策略相反，被声明为私有策略的type或attribute对non-platform的策略作者是不可见的，这里有些费解，
+    举例来说，这里以8.0版本的aosp源代码中的/system/sepolicy/private/目录下的atrace.te文件为例；
+    8.0版本的aosp中的/system/sepolicy/private/file_contexts定义了“/system/bin/atrace    u:object_r:atrace_exec:s0”
+    然后在/system/sepolicy/private/atrace.te中定义atrace相关的规则；
+    我们在device/qcom/sepolicy/common目录下新增一个atrace.te文件，并添加规则 "allow atrace sdcardfs:file read;"
+    当我们make进行编译时会在校验的时候失败，提示我们“device/qcom/sepolicy/common/atrace.te:2:ERROR 'unknown type atrace' at token ';' on line 23355”，那么也就是说private策略中的type和attribute对我们是不可见的。
+
+3.平台私有映射
+映射主要针对旧版本的映射，应用比较少，这里不作研究；
+
+
+e.构建SELinux策略
+
+Android8.0的SElinux策略是由/system和/vendor中的策略合并而来的。具体构建的逻辑声明在/platform/system/sepolicy/Android.mk中。
+Location	Contains
+system/sepolicy/public	平台策略
+system/sepolicy/private	平台策略
+system/sepolicy/vendor	平台对vendor相关的定义
+BOARD_SEPOLICY_DIRS	vendor 策略
+平台编译系统采用这种逻辑将平台和非平台策略组件分别打包在system镜像和vendor镜像中去。
+
+
+f.策略兼容性
+Android8.0 SELinux的模块化设计鼓励供应商（vendor）将自有部分的selinux与system部分分离开来，从而使得平台ota时具备更好的兼容性，比如新版本的SELinux配置与旧版本的SELinux配置的差异等。
+SELinux 策略是特定类型的对象（如file，dir，进程等），源域（主体）与目标域（客体）的交互；每个对象都受SELinux策略影响，每个对象至少要有一个type（类型），但这个类型（type）可以具备多个属性（attribute）；
+
+g.平台更新
+下面列举了一些平台更新可能会遇到的场景：
+1.相同类型
+这种场景常常发生在selinux版本中没有对对象修改标签，怎么理解呢，当我们同时有很多个版本的SELinux时，而且多个版本均对"/dev/binder"进行type的定义。那就会发生冲突，解决冲突的办法就是在不同版本的SELinux，对type定义上添加版本后缀，如下：binder_device_v1 … binder_device_vN
+
+2.新类型
+这种场景常常发生在我们需要添加一个新功能时，需要添加一个新type时，平台已经添加了一个新类型（type）。
+
+3.删除type
+
+4.新类别和权限
+
+5.删除类别和权限
