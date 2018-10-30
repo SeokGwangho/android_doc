@@ -212,14 +212,20 @@ GPS硬件适配层的源码位于：hardware/[vendor]/gps 目录下。 看gps/lo
 
 gps_module_methods定义了设备的open函数open_gps，看open_gps函数：
 
-		在使用设备前, 必须执行此函数。
+		在使用设备前, 必须执行此函数！
 		在它里面初始化了  
 				hw_device_t  的 .module            成员，以及 
 				gps_device_t 的 .get_gps_interface 成员。             
 		--------------------------------------------------------------------------------------open_gps()作用结束。
 		  初始化好了，上层()就可以通过 gps_device_t 的 get_gps_interface(), 调用gps__get_gps_interface()。 
 	        --------------------------------------------------------------------------------------
-		
+---------------------------------------------------------------------------
+在使用设备前, 必须执行此函数！
+---------------------------------------------------------------------------
+问： 既然在使用设备之前，必须先执行掉这个.open()函数指针，那么确切的被执行的时机是什么时候？？
+答： 
+
+
 	    static int open_gps(const struct hw_module_t* module, char const* name, struct hw_device_t** device)  
 	    {  
 		struct gps_device_t *dev = malloc(sizeof(struct gps_device_t)); 	//
@@ -268,7 +274,7 @@ gps__get_gps_interface()定义如下：
 
 
 --------------------------
-1.3 JNI适配层 (也需要实现？)
+1.3 JNI适配层 (也需要实现来着？)
 --------------------------
 
  		GPS JNI适配层的源码位于：frameworks/base/services/jni/com_android_server_location_GpsLocationProvider.cpp
@@ -299,7 +305,7 @@ gps__get_gps_interface()定义如下：
 		      
 			return JNI_VERSION_1_4;  
 		    }  
-			----------------------------------------------JNI初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。
+     ----------------------------------------JNI初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。
 
 
 回到JNI方法注册函数 register_android_server_location_GpsLocationProvider()函数，变量sMethods[]定义如下：
