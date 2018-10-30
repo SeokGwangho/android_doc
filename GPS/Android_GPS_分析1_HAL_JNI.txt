@@ -320,7 +320,7 @@ gps__get_gps_interface()定义如下：
      -------------------------------------------------------------------------------------------------------
 回到JNI方法注册函数 register_android_server_location_GpsLocationProvider()函数，变量sMethods[]定义如下：
 
-
+------------------------------------------
     static JNINativeMethod sMethods[] = {
          /* name,                                signature(签名),                                   funcPtr */
   
@@ -423,5 +423,34 @@ jboolean android_location_GpsLocationProvider_xxxxxx(JNIEnv* env, jobject obj) 	
 			--->module->methods->open(module, GPS_HARDWARE_MODULE_ID, &device); 
 				--->hal gps_open()
 
+
 到此，HAL层，JNI层的分析结束。
 
+
+
+
+------------------------------------------------------------------------------------
+插入内容： 在JNI层注册native函数，有2种方法： 静态注册 和 动态注册。
+------------------------------------------------------------------------------------
+1、静态注册方法
+	根据函数名找到对应的JNI函数:
+	Java层调用函数时，会从对应的JNI中寻找该函数，如果没有就会报错，如果存在则会建立一个关联联系，以后在调用时会直接使用这个函数，
+	这部分的操作由虚拟机完成。
+	静态方法就是根据函数名来遍历java和jni函数之间的关联，而且要求jni层函数的名字必须遵循特定的格式，
+	
+	其缺点在于：
+	1）javah生成的jni层函数特别长；
+	2）初次调用native函数时要根据名字搜索对应的jni层函数来建立关联联系，这样影响效率。
+
+2、动态注册方法
+	JNI 允许你提供一个函数映射表，注册给Jave虚拟机。
+	这样Jvm就可以用函数映射表，来调用相应的函数，就可以不必通过函数名来查找需要调用的函数了。
+	
+	Java与JNI通过 JNINativeMethod 的结构来建立联系，它在jni.h中被定义，其结构内容如下：
+		typedef struct {
+			const char* name;	//第一个变量name是Java中函数的名字。
+			const char* signature;	//第二个变量signature，用字符串是描述了函数的参数和返回值
+			void* fnPtr;		//第三个变量fnPtr是函数指针，指向C函数。
+		} JNINativeMethod;
+----------------------------------------------------------------------------------------------
+当java通过System.loadLibrary()加载完JNI动态库后，紧接着会查找一个JNI_OnLoad的函数，如果有，就调用它，而动态注册的工作就是在这里完成的.
