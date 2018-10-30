@@ -216,10 +216,10 @@ gps_module_methods定义了设备的open函数open_gps，看open_gps函数：
 		在它里面初始化了  
 				hw_device_t  的 .module            成员，以及 
 				gps_device_t 的 .get_gps_interface 成员。             
-		---------------------------------------------------------------------------------------------------------- open_gps()作用结束。
-
-		初始化好了，上层()就可以通过 gps_device_t 的 get_gps_interface(), 调用gps__get_gps_interface()。 
-	
+		--------------------------------------------------------------------------------------open_gps()作用结束。
+		  初始化好了，上层()就可以通过 gps_device_t 的 get_gps_interface(), 调用gps__get_gps_interface()。 
+	        --------------------------------------------------------------------------------------
+		
 	    static int open_gps(const struct hw_module_t* module, char const* name, struct hw_device_t** device)  
 	    {  
 		struct gps_device_t *dev = malloc(sizeof(struct gps_device_t)); 	//
