@@ -1,5 +1,5 @@
 -------------------------------------------------------------------
-Android_init.rc语法 介绍（SEAndroid/SELinux之前？）
+1.Android_init.rc语法 介绍（SEAndroid/SELinux之前？）
 -------------------------------------------------------------------
 一、简述
 init.rc文件，由系统第一个启动的init程序解析，此文件由语句组成，
@@ -226,3 +226,134 @@ view plain copy 在CODE上查看代码片派生到我的代码片
      service chpermission   /data/ chpermission 
           oneshot
      用于启动 chpermission，完成相应的功能--修改data权限。
+
+
+
+
+---------------------------------------------------------------
+2. android init.rc文件语法详解
+---------------------------------------------------------------
+初始化语言,包含了四种类型的声明：
+        Actions(行动)、 
+        Commands(命令)、
+        Services(服务)、
+        Options(选项)。
+
+-----------------------------
+基本语法规定:
+-----------------------------
+所有类型的语句,都是基于行的，一个语句包含若干个tokens，token之间通过空格字符分隔；
+    如果一个token中需要包含空格字符，则需要通过C语言风格的反斜线（'\'）来转义，或者使用双引号把整个token引起来。反斜线还可以出现在一行的末尾，
+    表示下一行的内容仍然属于当前语句。
+
+以'#'开始的行是注释行；
+动作（Actions）和服务（Services）语句,隐含表示一个新的段落（section）的开始；
+所有的命令（commands）和选项（options）归属于上方最近的一个段落；
+在第一个段落之前的指令（commands）和选项（options）是无效的。在服务之后的命令也是无效的；
+import 语句导入其他的rc文件，例如import /init.usb.rc 导入跟目录下的init.usb.rc文件；
+
+---------------------------------------------------------------------------------------
+动作（Actions）：
+---------------------------------------------------------------------------------------
+就是在某种条件下,触发一系列的命令. 通常有一个trigger，形式如下
+
+on <trigger>
+     <command>
+     <command>
+-------------------------
+trigger主要包括：
+boot                //当/init.conf加载完毕时触发
+<name>=<value>      //当<name>被设置为<value>时触发，例如on  property:sys.sensors=1表示当环境变量sys.sensors被设置为1的时候触发。
+early-init          //还有这个
+init                //还有这个
+early-boot          //等等,这三个，可以打乱顺序随便写，但解析完了的执行顺序确是固定的。
+                    //执行顺序如下：early-init -> init -> early-boot -> boot
+---------------------------------------------------------------------------------------
+<command>主要包括：
+---------------------------------------------------------------------------------------
+exec <path> [ <argument> ]    执行指定路径下的程序，并传递参数. 
+export <name> <value>         设置全局环境参数，此参数被设置后对所有进程都有效. 
+ifup <interface>              使指定的网络接口"上线",相当激活指定的网络接口 
+hostname <name>               设置主机名 
+chdir <directory>             改变工作目录. 
+chmod <octal-mode> <path>     改变指定文件的读取权限. 
+chown <owner> <group> <path>  改变指定文件的拥有都和组名的属性. 
+chroot <directory>            改变进行的根目录. 
+class_start <serviceclass>    启动指定类属的所有服务，如果服务已经启动，则不再重复启动. 
+class_stop <serviceclass>     停止指定类属的所有服务. 
+domainname <name>             设置域名 
+insmod <path> [ <argument> ]  安装指定路径的模块，以及指定参数. 
+mkdir <path> [mode] [owner] [group] 用指定参数创建一个目录，在默认情况下，创建的目录读取权限为755.用户名为root,组名为root. 
+mount <type> <device> <dir> [ <mountoption> ]* 类似于linux的mount指令 
+setprop <name> <value>       设置属性及对应的值. 
+setrlimit <resource> <cur> <max> 设置资源的rlimit(资源限制），不懂就百度一下rlimit 
+start <service>              如果指定的服务未启动，则启动它. 例如"start ueventd " ueventd 是服务名，
+stop <service>               如果指定的服务当前正在运行，则停止它. 
+symlink <target> <path>      创建一个符号链接. 
+sysclktz <mins_west_of_gmt>  设置系统基准时间. 
+trigger <event>              启动某个触发条件，例如trigger firmware_mounts_complete，那么on firmware_mounts_complete段的动作将会执行
+write <path> <string> [ <string> ] 往指定的文件写字符串. 
+
+
+---------------------------------------------------------------------------------------
+服务（Services）:
+---------------------------------------------------------------------------------------
+服务是指那些需要在系统初始化时就启动,或退出时自动重启的,在后台执行的程序.
+
+形式如下：
+service <name> <pathname> [ <argument> ]
+  <option>  
+  <option>  
+
+说明:
+name     可以随便定义一个有意义的名字，但是这个名字在rc文件里面要是唯一的，如果有重名的，那么之后的将会忽略掉。
+pathname 该应用程序在系统中的绝对路径
+argument 是传给该应用程序的参数。
+
+----------------------------------------------
+options 主要包括:
+----------------------------------------------
+critical    //据设备相关的关键服务，如果在4分钟内，此服务重复启动了4次，那么设备将会重启进入还原模式。 
+disabled    //该服务不能通过启动一类服务来启动，
+                //例如 即使该服务有定义option “class core” 也不能用class_start core来启动，只能以单独的名字来启动: start name.
+setenv <name> <value>           //设置环境变量
+socket <name> <type> <perm> [ <user> [ <group> ] ] 
+                                //在/dev/socket/下创建一个unix domain的socket，并传递创建的文件描述符fd给服务进程.
+                                //其中type必须为dgram或stream,seqpacket.用户名和组名默认为0.
+                                
+user <username>                     //在执行此服务之前先切换用户名。当前默认为root. 
+group <groupname> [ <groupname> ]*  //类似于user,切换组名  默认为root.
+oneshot                             //当此服务退出时不会自动重启. 如果没有这个选项，只运行一次.
+class <name>                        //给服务指定一个类属,这样方便操作多个服务同时启动或停止, 默认情况下为default. 
+onrestart                           //当服务重启时执行一条指令， 例如“onrestart exec /system/bin/myapp”则表示
+                                    //在服务重新启动的时候执行/system/bin/myapp这个应用。
+
+
+例子: 如何启动一个服务?
+
+定义一个服务:
+service Start__server /system/bin/Start__server //定义一个名字叫Start__server 的服务，该服务的路径在/system/bin/Start__server
+    class main                                  //该服务属于main 的class
+    user root
+    group root 
+
+
+启动服务:
+on boot 
+   class_start main      //启动所有属于main这个class的服务
+
+如果服务的属性里面没有class的选项，例如                    
+service Start__server /system/bin/Start__server                                   
+    user root
+    group root 
+
+或者定义了disabled 的选项，例如
+service Start__server /system/bin/Start__server  
+    class main                                   
+    user root
+    group root
+    disabled   
+    
+那么启动服务就需要下面的语句
+on boot
+   start  Start__server
