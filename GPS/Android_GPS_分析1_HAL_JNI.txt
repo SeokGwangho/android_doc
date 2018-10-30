@@ -13,9 +13,11 @@ Init进程
 		 ---> register_android_server_location_GpsLocationProvider()
 		      ---> return jniRegisterNativeMethods(env, "com/android/server/location/GpsLocationProvider", sMethods, NELEM(sMethods));
 						       
-		    JNI初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。
-		    这就是上层能Call到JNI层的原因。
-                    JNI和HAL这俩层，靠 const GpsInterface* 来交互: 即在HAL层定义的GpsInterface的实体变量sLocEngInterface。
+所以，
+板子启动初始化的时候，会进行JNI方法的注册，从而使上层应用能通过JNI调用c/c++本地方法。 这就是上层能Call到JNI层的原因。
+而
+JNI和HAL这俩层，靠 const GpsInterface* 来交互: 即在HAL层定义的GpsInterface的实体变量sLocEngInterface。
+
 
 Step2: HAL的open_gps--->
 
