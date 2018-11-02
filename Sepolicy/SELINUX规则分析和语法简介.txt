@@ -1,0 +1,219 @@
+##################################################################################
+SELINUX规则分析和语法简介.txt
+##################################################################################
+在android里面，SELinux针对的对象，有两个类型，一种是对文件，一种是对进程。
+
+   ps -Z 可以查看[进程]所拥有的selinux的权限;
+   ls -Z 可以查看[File]所拥有的selinux的权限;
+
+--------------------------------------------------------------
+ps -Z 举例：
+--------------------------------------------------------------
+	 LABEL                         USER     PID   PPID  NAME
+
+	u:r:init:s0                    root      1     0     /init
+	u:r:kernel:s0                  root      2     0     kthreadd
+	...
+	u:r:kernel:s0                  root      258   2     irq/322-HPH_R O
+	u:r:logd:s0                    logd      259   1     /system/bin/logd
+	u:r:healthd:s0                 root      260   1     /sbin/healthd
+	u:r:lmkd:s0                    root      261   1     /system/bin/lmkd
+	u:r:servicemanager:s0          system    262   1     /system/bin/servicemanager
+	u:r:tee:s0                     system    271   1     /system/bin/qseecomd
+	u:r:kernel:s0                  root      280   2     kworker/3:1H
+	u:r:kernel:s0                  root      290   2     kauditd
+	u:r:rmt_storage:s0             nobody    291   1     /system/bin/rmt_storage
+	u:r:vold:s0                    root      263   1     /system/bin/vold
+	u:r:surfaceflinger:s0          system    264   1     /system/bin/surfaceflinger
+	u:r:tctd:s0                    root      265   1     /system/bin/tctd
+	u:r:rfs_access:s0              system    268   1     /system/bin/rfs_access
+	u:r:shell:s0                   shell     292   1     /system/bin/sh
+	u:r:netd:s0                    root      295   1     /system/bin/netd
+	u:r:debuggerd:s0               root      296   1     /system/bin/debuggerd
+
+
+LABEL处的说明:
+
+	1)第一个，Android中只定义了一个user,即为 u;
+
+	2)第二个，如果是进程的话，都会统一定义为 r; 
+		  如果是文件的话，会被定义为 object_r;
+
+	3)第三个, 是这个进程的type;  //按照目前我的理解，这个是进程所属的domain类型。在andorid里面，定义了100多个type.
+
+	4)第四个是s0，这个是一个安全的等级。
+
+--------------------------------------------------------------
+ls -Z 举例：
+--------------------------------------------------------------
+	drwxr-xr-x root     root              u:object_r:system_file:s0 system
+	drwxrwxr-x system   tctpersist        u:object_r:tct_persist_file:s0 tctpersist
+	lrwxrwxrwx root     root              u:object_r:rootfs:s0 tombstones -> /data/tombstones
+	drwxr-x--x root     sdcard_r          u:object_r:rootfs:s0 storage
+	drwx--x--x root     root              u:object_r:tmpfs:s0 synthesis
+	dr-xr-xr-x root     root              u:object_r:sysfs:s0 sys
+	-rw-r--r-- root     root              u:object_r:rootfs:s0 ueventd.qcom.rc
+	-rw-r--r-- root     root              u:object_r:rootfs:s0 ueventd.rc
+
+说明:
+	object_r是代表的文件;
+	u是android的唯一的用户;
+	rootfs是这个文件所对应的(Domain?)类型;
+	s0是一个安全的等级限制。
+
+
+
+--------------------------------------------------------------------------------------
+3. 如何配置selinux
+--------------------------------------------------------------------------------------
+   首先，按照Google的官方文档：
+   需要linux内核首先是支持selinux的，另外需要android的selinux的配置文件，也就是extern/sepolicy里面的内容。
+   然后就是修改BoardConfig.mk
+   Google的nexus的sepolicy的支持就放在了device/lge/mako/sepolicy
+   首先会包含厂商定制的sepolicy的文件夹：BOARD_SEPOLICY_DIRS
+   然后将规则添加到了sepolicy中：BOARD_SEPOLICY_DIRS
+
+  这样的话，我们编译出来的image其实就是具有了selinux的功能。
+  其实如果没有厂商定制的话，也是会编译到external/sepolicy的，这样的话，就是使用andriod所有默认的sepolicy（It defines the domains and types for the AOSP services and apps common to all devices. ）
+
+    然后理解了这个之后，我们可以看到其实很多的厂商也是有自己的配置规则在device/***/***/sepolicy下面的.
+
+--------------------------------------------------------------------------------------
+4. selinux的配置规则：
+--------------------------------------------------------------------------------------
+   首先要了解sepolicy的结构：
+   a. App进程 -> mac_permissions.xml
+   b. App数据文件 -> seapp_contexts
+   c. 系统文件  ->  file_contexts
+   d. 系统属性 -> property_contexts
+
+   在te文件中，我们一般遇到的语法是这样的：
+   rule_name source_type target_type:class perm_set
+   解读为： 为source_type设置一个rule_name的规则，规则是对target_type的class 进行 perm_set的操作。
+
+   然后是一些特殊的配置文件：
+   a. external/sepolicy/attributes -> 所有定义的attributes都在这个文件
+   b. external/sepolicy/access_vectors -> 对应了每一个class可以被允许执行的命令
+   c. external/sepolicy/roles  -> Android中只定义了一个role，名字就是r，将r和attribute domain关联起来
+   d. external/sepolicy/users  -> 其实是将user与roles进行了关联，设置了user的安全级别，s0为最低级是默认的级别，mls_systemHigh是最高的级别
+   e. external/sepolicy/security_classes -> 指的是上文命令中的class，个人认为这个class的内容是指在android运行过程中，程序或者系统可能用到的操作的模块
+   f. external/sepolicy/te_macros -> 系统定义的宏全在te_macros文件
+   g. external/sepolicy/***.te  -> 一些配置的文件，包含了各种运行的规则
+
+--------------------------------------------------------------------------------------
+   另外，selinux有两种工作模式：
+--------------------------------------------------------------------------------------
+    “permissive”：所有操作都被允许（即没有MAC），但是如果有违反权限的话，会记录日志
+    “enforcing”：所有操作都会进行权限检查
+
+--------------------------------------------------------------------------------------
+   最后，type的命令如下：
+--------------------------------------------------------------------------------------
+   type type_id [alias alias_id,] [attribute_id]   # 将type_id（别名为alias）关联到attribute. 这样的话，方便用attribute来管理不同的type中包含相同的属性的部分。
+
+--------------------------------------------------------------------------------------
+   class命令的格式为：
+--------------------------------------------------------------------------------------
+   class class_name [ inherits common_name ] { permission_name ... }
+   inherits表示继承了common定义的权限，然后自己额外实现了permission_name的权限
+
+
+--------------------------------------------------------------------------------------
+   在.te文件中常见的四种命名的规则：
+--------------------------------------------------------------------------------------
+   allow：赋予某项权限。
+   allowaudit：audit含义就是记录某项操作。默认情况下是SELinux只记录那些权限检查失败的操作。
+		allowaudit则使得权限检查成功的操作也被记录。
+		注意，allowaudit只是允许记录，它和赋予权限没关系。
+		赋予权限必须且只能使用allow语句。
+   dontaudit：对那些权限检查失败的操作不做记录。
+   neverallow：前面讲过，用来检查安全策略文件中是否有违反该项规则的allow语句。如例子5所示：
+
+
+
+
+-----------------------------------------------------------------------------------------------------
+举例：
+-----------------------------------------------------------------------------------------------------
+type init, domain; 					//将init关联到domain，即将domain设置为init类型的属性
+allow init unlabeled:filesystem mount; 			//允许init类型对unlabeled类型的filesystem进行mount的操作
+allow init fotad:unix_stream_socket { bind create }; 	//允许init类型对fotad类型的unix_stream_socket 进行bind和create的操作
+
+allow appdomain anr_data_file:dir search; 		//appdomain是定义在te_macros里面的一个宏，很多的app规则,会使用类似app_domain(shell)的命令将其添加进去
+allow appdomain anr_data_file:file { open append }; 	
+   
+	意思是：
+	1. 允许app去对anr_data_file类型的目录进行查找的操作
+	2. 允许app对anr_data_file类型的file进行打开和添加操作   其实就是规定了出现anr时候，app往/data/anr/里面写入的权限限制
+
+neverallow { appdomain -unconfineddomain } kmem_device:chr_file { read write }; 	//绝对不允许app(除了有unconfineddomain属性的app)对kmem_device类型的字符设备进行读写的操作
+neverallow { appdomain -unconfineddomain } self:capability2 *; 				//绝对不允许除了unconfineddomain以外的app对self类型的capability2进行任何的操作
+
+type httpd_user_content_t, file_type, httpdcontent; 		//声明一个httpd_user_content_t的类型，具有file_type和httpdcontent的属性
+
+type httpd_user_content_t; 					//声明一个httpd_user_content_t的类型
+typeattribute httpd_user_content_t file_type, httpdcontent;     //定义httpd_user_content_t具有file_type, httpdcontent的属性
+
+allow appdomain self:rawip_socket create_socket_perms;
+
+
+
+所有可以设置类型的地方, 其实都可以设置为属性: 
+	比如我们允许所有具有app属性的内容可以去对self属性的rawip_socket进行create的操作
+
+allow {user_t domain} {bin_t file_type sbin_t}:file execute ; 	//允许user_t和domain属性的类对bin_t, file_type, sbin_t类型的file进行可执行的操作
+
+allow user_t user_t:process signal;
+allow user_t self:process signal;
+
+   //这两条语句的表述其实是一致的，其实self指的是目标的类型和发起人的类型是一致的, 所以不能声明一个类型或者属性叫做self
+
+allow user_t bin_t:file ~{ write setattr ioctl }; 	//允许user_t对bin_t类型的file进行除了write setattr ioctl相关的操作
+
+type_transition system wifi_data_file:sock_file system_wpa_socket;
+
+   //当一个类型为system的类别去进行wifi_data_file类型的sock_file访问时，类型默认切换到system_wpa_socket
+
+type_transition init_t apache_exec_t:process apache_t; //这条语句想要执行成功, 至少首先声明下面的三条规则：
+allow init_t apache_exec_t:file execute;
+allow init_t apache_t:process transition;
+allow apache_t apache_exec_t:file entrypoint;
+
+   //type_transition 和 type_change 的语法规则是一样的， type_change规则的影响不会在内核中生效，而是依赖于用户空间应用程序，如login或sshd
+
+
+
+-----------------------------------------------------------------------------------------------------
+5. 生成方法：
+-----------------------------------------------------------------------------------------------------
+下面介绍一下最简单的安全策略（se-policy）添加方法，各组碰到SELinux导致的访问禁止问题，可以参考用这种方法确认和解决。
+
+1) 安装pc上的工具，用于自动生成安全策略
+
+	$ sudo apt-get install policycoreutils
+
+2) 刷userdebug/eng软件，先将SELinux设置成Permissive模式，只输出警告不阻止操作
+   
+        使用getenforce命令查看当前模式：$ adb shell getenforce
+	Enforcing
+
+	在Enforcing模式下，除安全策略允许外的操作都会被阻止；使用setenforce命令更改当前模式（root权限需要）：
+
+	$ adb root
+	restarting adbd as root
+	$ adb shell setenforce 0
+	$ adb shell getenforce
+	Permissive
+
+	开发如果碰到怀疑是SELinux 可以通过这种方法关闭SELiunx( setenforce 0)，以确认是不是SELinux引起的
+
+3)，按照流程完成整个操作，抓取log，过滤出警告信息
+
+	$ grep "avc: *denied" log.txt > denied.txt
+	$ cat denied.txt
+
+4)，使用pc工具生成安全策略
+
+	命令 audit2allow 用来一次性生成所有安全策略，输入为前面抓取的log
+	$ audit2allow -i denied.txt
+
