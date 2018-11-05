@@ -46,7 +46,7 @@ source_type：
 	"domain"を指定する。
 	Domainは、Processの権限説明用の物である。
 	
-	typeコマンドで、自分のDomainを定義する同時に、既存のDomainからInteritさせることができる。
+	typeコマンドで、自分のDomainを定義する同時に、既存のDomainからInheritさせることができる。
 
 	例：
                 type shell, domain      //domain "shell" inherit from "domain". 
@@ -57,7 +57,7 @@ source_type：
 ----------------------------------------------------------------------------------
 target_type：
 ----------------------------------------------------------------------------------
-Processが操作する対象(File、Dirなど)の種類. 同じく、typeコマンドが使え、既存の物からInteritできる？
+Processが操作する対象(File、Dirなど)の種類. 同じく、typeコマンドが使え、既存の物からInheritできる？
 
 	例：
 		type ttyMT_device, dev_type;    //
