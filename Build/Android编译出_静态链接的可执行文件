@@ -1,0 +1,55 @@
+-------------------------------------------------
+Android编译出_静态链接的可执行文件
+-------------------------------------------------
+Android 开发过程中,遇到以下场景,导致编译的可执行程序无法运行：
+
+不支持动态链接:
+    比如系统初始化进程init和Recovery模式下执行的recovery，它们在执行的时候，往往
+    不会挂载/system分区，不存在ld和ldd.so等动态加载工具和C库，
+    这样的可执行程序, 需要静态链接。
+
+一些辅助测试的工具程序:
+    比如busybox等，如果是动态链接的话，依赖的库的接口如有变化，会导致程序无法执行。一般都是静态链接，一次编译后，可以随时执行。
+    busybox静态编译出来的话，比较大，静态编译小太多。
+
+
+----------------------------------------------
+那么在Android 中如何编译一个静态链接的可执行程序？ 
+----------------------------------------------
+非常简单，仿照源码中的bootable/recovery/Android.mk，简化出如下的编译模板：
+
+LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)                   #复位编译参数
+LOCAL_MODULE := module_name             #指定模块名
+LOCAL_FORCE_STATIC_EXECUTABLE := true   #标志该模块需要强制静态链接!!!
+LOCAL_CFLAGS +=                         #指定额外的编译、链接参数
+LOCAL_SRC_FILES :=                      #编译源文件列表
+
+#该模块需要链接的静态库列表，这里千万别忘记需要静态链接libc
+LOCAL_STATIC_LIBRARIES := libc \
+            ....
+
+#编译成可执行文件 
+include $(BUILD_EXECUTABLE）
+
+
+#其中,核心就两句： 
+LOCAL_FORCE_STATIC_EXECUTABLE := true 表明该模块需要静态链接 
+LOCAL_STATIC_LIBRARIES := 给出该模块需要链接的静态库列表。
+
+编译指令,还是include $(BUILD_EXECUTABLE)
+
+-------------------------------------------------------------------------------
+如何判断一个可执行程序是动态链接?还是静态编译的？ 
+-------------------------------------------------------------------------------
+用file命令， 如下：
+
+recoery模式下的init是静态链接的(statically linked):
+$ file init
+init: ELF 32-bit LSB  executable, Intel 80386, version 1 (SYSV), statically linked...
+
+
+sh是动态链接的，使用动态库(dynamically linked) (uses shared libs):
+$ file sh
+sh: ELF 32-bit LSB  shared object, Intel 80386, version 1 (SYSV), dynamically linked (uses shared libs)...
