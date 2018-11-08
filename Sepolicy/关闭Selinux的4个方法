@@ -1,0 +1,39 @@
+
+在Android 开发过程中,经常需要关闭Selinux 功能，
+
+通常关闭Selinux的方法如下：
+--------------------------------------------------------
+方法1：  
+--------------------------------------------------------
+  static bool selinux_is_disabled(void)  
+ {  
+    if (ALLOW_DISABLE_SELINUX) {  
+        if (access("/sys/fs/selinux", F_OK) != 0) {  
+            return true;  
+        }  
+  
+        //return selinux_status_from_cmdline() == SELINUX_DISABLED;  
+        改为：  
+        return true;  
+    }  
+    return false;  
+ }  
+  
+--------------------------------------------------------
+方法2：  
+--------------------------------------------------------
+   static selinux_enforcing_status selinux_status_from_cmdline() {  
+     selinux_enforcing_status status = SELINUX_ENFORCING;  
+         改为：  
+         selinux_enforcing_status status = SELINUX_PERMISSIVE;  
+   }
+
+--------------------------------------------------------
+方法3：  
+--------------------------------------------------------
+# adb shell "echo 0 > /sys/fs/selinux/enforce"  
+  
+--------------------------------------------------------
+方法4：  
+-------------------------------------------------------- 
+# adb shell setenforce 0  
