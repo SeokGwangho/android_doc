@@ -38,20 +38,22 @@ Android通过为每一个apk，分配一个唯一的linux userID来实现，名�
 Android提供了如下的一种机制，可以使两个apk打破前面讲的这种壁垒。
 在AndroidManifest.xml中利用sharedUserId属性给不同的package分配相同的userID，通过这样做，两个package可以被当做同一个程序，
 系统会分配给两个程序相同的UserID。当然，基于安全考虑，两个apk需要相同的签名，否则没有验证也就没有意义了。
-
+---------------------------------------------------------------------
 （3）默认apk生成的数据对外是不可见的
 实现方法是：Android会为程序存储的数据分配该程序的UserID。
-借助于Linux严格的文件系统访问权限，便实现了apk之间不能相互访问似有数据的机制。
+借助于Linux严格的文件系统访问权限，便实现了apk之间不能相互访问私有数据的机制。
+
 例：我的应用创建的一个文件，默认权限如下，可以看到只有UserID为app_21的程序才能读写该文件。
 -rw------- app_21   app_21      87650 2000-01-01 09:48 test.txt
 
 如何对外开放？
-<1> 使用MODE_WORLD_READABLE and/or MODE_WORLD_WRITEABLE标记。
+<1> 使用 MODE_WORLD_READABLE and/or MODE_WORLD_WRITEABLE 标记。
 When creating a new file with getSharedPreferences(String, int), openFileOutput(String, int), or openOrCreateDatabase(String, int, SQLiteDatabase.CursorFactory), you can use the MODE_WORLD_READABLE and/or MODE_WORLD_WRITEABLE flags to allow any other package to read/write the file. When setting these flags, the file is still owned by your application, but its global read and/or write permissions have been set appropriately so any other application can see it.
 
-
+---------------------------------------------------------------------
 （4）AndroidManifest.xml中的显式权限声明
-Android默认应用是没有任何权限去操作其他应用或系统相关特性的，应用在进行某些操作时都需要显式地去申请相应的权限。
+Android默认应用是没有任何权限去操作其他应用或系统相关特性的，应用在进行某些操作时，都需要显式地去申请相应的权限。
+
 一般以下动作时都需要申请相应的权限：
 
 A particular permission may be enforced at a number of places during your program's operation:
@@ -62,12 +64,16 @@ At the time of a call into the system, to prevent an application from executing 
 在应用安装的时候，package installer会检测该应用请求的权限，根据该应用的签名或者提示用户来分配相应的权限。
 在程序运行期间是不检测权限的。如果安装时权限获取失败，那执行就会出错，不会提示用户权限不够。
 大多数情况下，权限不足导致的失败会引发一个 SecurityException，会在系统log（system log）中有相关记录。
-
+---------------------------------------------------------------------
 （5）权限继承/UserID继承
 当我们遇到apk权限不足时，我们有时会考虑写一个linux程序，然后由apk调用它去完成某个它没有权限完成的事情，很遗憾，这种方法是行不通的。
 前面讲过，android权限是在进程层面的，也就是说一个apk应用启动的子进程的权限不可能超越其父进程的权限（即apk的权限），
 即使单独运行某个应用有权限做某事，但如果它是由一个apk调用的，那权限就会被限制。
 实际上，android是通过给子进程分配父进程的UserID实现这一机制的。
+
+
+
+
 
 （三）常见权限不足问题分析
 
