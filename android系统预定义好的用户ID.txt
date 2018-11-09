@@ -1,7 +1,35 @@
+android的UID和linux的UID根本是两回事：
+
+Linux   的UID是用于针对多用户操作系统中用于区分用户的。而
+Android 的UID是用于系统进行权限管理的。
+
+在android shell环境中，ps命令查询的时候，都会输出如下的信息:
+
+USER      PID   PPID  VSIZE  RSS   WCHAN              PC  NAME
+u0_a42    1971  597   1443692 35452 SyS_epoll_ 7f7dca9ba4 S com.android.printspooler
+u0_a24    2003  597   1440292 33136 SyS_epoll_ 7f7dca9ba4 S com.qualcomm.qti.accesscache
+u0_a50    2110  597   1440316 32912 SyS_epoll_ 7f7dca9ba4 S com.android.smspush
+system    2127  597   1470876 37476 SyS_epoll_ 7f7dca9ba4 S com.android.settings
+radio     2140  597   1442476 43824 SyS_epoll_ 7f7dca9ba4 S com.qualcomm.qcrilmsgtunnel
+system    2212  597   1444100 35500 SyS_epoll_ 7f7dca9ba4 S com.qualcomm.telephony
+system    2286  597   1442632 34892 SyS_epoll_ 7f7dca9ba4 S com.qti.diagservices
+system    2301  597   1440236 34528 SyS_epoll_ 7f7dca9ba4 S com.qualcomm.qti.qs
+u0_a1     2318  597   1443108 39640 SyS_epoll_ 7f7dca9ba4 S com.android.providers.calendar
+u0_a8     2335  597   1442188 34216 SyS_epoll_ 7f7dca9ba4 S com.android.managedprovisioning
+u0_a9     2351  597   1440216 33492 SyS_epoll_ 7f7dca9ba4 S com.android.onetimeinitializer
+u0_a20    2368  597   1440176 32664 SyS_epoll_ 7f7dca9ba4 S com.qualcomm.qti.calendarlocalaccount
+u0_a26    2381  597   1440680 33512 SyS_epoll_ 7f7dca9ba4 S com.qti.csk
+u0_a27    2394  597   1448988 40792 SyS_epoll_ 7f7dca9ba4 S com.android.deskclock
+
+那么，对于输出信息中的[USER一栏]中具体的system，radio，u0_a1（CanlendarProvider）,u0_a27(deskClock)等等,这些就是Andorid UID。
+
+奇怪的就是,之前我理解的uid都是有正整数来表示，这里却是字串的形式，uid是整数，这点毋庸置疑，应该是有一个转换关系。
+
+
+android探索之UID u0_axxx的由来:
 -------------------------------------------------------
 android系统预定义好的用户ID, android用户和AID:
 -------------------------------------------------------
-
 android有些系统常用用户，例如root, system,  shell, wifi,radio...等的【用户ID】都是在代码里，提前定义好了。
 
 例如，system的uid是1000：
@@ -65,8 +93,7 @@ acl扩展,主要是为了弥补linux拥有者:组:其他用户这种模式的“
 --------------------------------------------------------------------
 android UID:
 --------------------------------------------------------------------
-对android而言，是“单”用户的（从代码看貌似现在也支持多用户了），AOSP将linux用户这个概念做了修改:
-给每一个安装运行的app赋予不同的UID。
+对android而言，是“单”用户的（从代码看貌似现在也支持多用户了），AOSP将linux用户这个概念做了修改: 给每一个安装运行的app赋予不同的UID。
 
 下面结合代码,看看这些system，root等字符串到底是什么(代码基于android 5.1)。
 
