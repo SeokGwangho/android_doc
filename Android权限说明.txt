@@ -1,6 +1,19 @@
+Android系统中修改了Linux的UID的含义:
+
+由于Android是单用户系统，不需要支持多用户登陆，因此传统的UID系统就失去了原来的意义。
+
+Android巧妙地修改了UID的含义：每个APP对应一个UID, 用UID对应用程序进行管理。
+
+    Android中查看UID的方法：
+      adb pull/data/system/packages.list
+      vim packages.list
+
+
+
+
+
 
 Android系统是运行在Linux内核上的，Android与Linux分别有自己的一套严格的安全及权限机制.
-
 --------------------------------------------------------------------
 （一）linux文件系统上的权限
 --------------------------------------------------------------------
@@ -16,7 +29,6 @@ Android系统是运行在Linux内核上的，Android与Linux分别有自己的�
 而gps.apk运行起来后可以干哪些事情，跟这个不相关。
 
 不要看apk文件，在系统上属于system/system用户及用户组，或者root/root用户及用户组，就认为apk具有system或root权限（废话）。
-
 apk程序是运行在虚拟机上的,对应的是Android独特的权限机制，只有体现到文件系统上时，才使用linux的权限设置。
 
 
