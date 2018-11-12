@@ -1,0 +1,674 @@
+---------------------------
+SELinux由来:
+---------------------------
+SEAndroid是Google在Android 4.4上正式推出的一套以SELinux为基础于核心的系统安全机制。
+而SELinux则是由美国NSA（アメリカ国家安全保障局）和一些公司（如 RedHat）设计的一个针对Linux的安全加强系统。
+
+NSA最初设计的安全模型叫FLASK（Flux Advanced Security Kernel），
+最初这套模型针对DTOS系统。后来，NSA觉得Linux更具发展和普及前景，所以就在Linux系统上重新实现了FLASK，称之为SELinux（Security-Enhanced Linux）。
+
+由于Linux有多种发行版本，所以各家的SELinux表现形式也略有区别。具体到Android平台，Google对其进行了一定得修改，从而得到SEAndroid。
+
+
+---------------------------
+为什么需要SELinux:
+---------------------------
+引入SE之前缺陷:
+在引入SEAndroid安全机制之前，Android系统的安全机制分为应用程序和内核两个级别。
+
+应用程序级别的安全机制:
+就是我们常说的Permisson机制。需要在AndroidManifest.xml配置文件中进行权限申请，
+系统在应用程序安装的时候会提示该应用申请了哪些权限，用户确认后，进行安装，并且安装过程中由系统决定（如根据应用程序签名）是否赋予应用程序申请的那些权限。
+
+内核级别的安全机制:
+就是传统的Linux UID/GID机制，Linux就是通过用户、进程、文件的UID/GID来进行权限管理的。
+Linux将文件的权限划分为读、写和执行三种，分别用字母r、w和x表示。每一个文件有三组读、写和执行权限，分别是
+针对文件的所有者、文件所有者所属的组以及除前两种之外的其它用户。
+这样，如果一个用户想要将一个自己创建的文件交给另外一个用户访问，那么只需要相应地设置一下这个文件的其它用户权限位就可以了。
+
+由上可知，文件的权限控制,在所有者手中，这种权限控制方式就称为自主式权限控制，即Discretionary Access Control，简称为DAC。
+
+
+理想情况下DAC不会有什么问题，但是，某个用户可能会不小心将自己创建的文件的权限位错误地修改为允许其它用户访问。
+如果这个用户是一个特权用户，并且它错误操作的文件是一个敏感的文件，那么就会产生严重的安全问题。
+-----------------------------------------------------------------------------------
+与DAC相对的是MAC（Mandatory Access Control，强制访问控制）。
+在MAC机制中，用户、进程或者文件的权限,是由[管理策略]决定的，而不是由它们自主决定的。
+
+例如，我们可以设定这样的一个管理策略：
+  不允许用户1将它创建的文件1.txt授予用户2访问。这样无论用户1如何修改文件1.txt的权限bit，用户2都是无法访问文件1.txt。
+这种安全访问模型可以强有力地保护系统的安全。
+
+SELinux就是采用的MAC机制。
+类似FLASK：
+Client发起object访问请求，OM处理请求，先查询AVC（Access Vector Cache）缓存，如果查询成功直接返回结果，
+否则会向SS发起查询并将查询结果存入AVC缓存中，SS根据事先编写的安全策略决定发起者是否有对应的权限。
+
+SELinux，在内核中以LSM（Linux Security Modules）模块的形式实现：
+
+         LSM（Linux Security Modules）模块的Architecture
+                +---------------------+
+                |    UserSpace Process|
+                +---------------------+
++------------------------------------------------------------------------+
+                +---------------------+
+                | open system call    |
+                +---------------------+
+
+                +---------------------+
+                |  look up inode      |
+                +---------------------+          +---------------------+
+                                                 | LSM Policy Engine   |
+                +---------------------+          +----------^----------+
+                |  Error Check        |                     |
+                +---------------------+                     |
+                                                            |
+                +---------------------+                     |
+                |  DAC Check！！！     |                     |
+                +---------------------+                     |
+                                                            |
+                +---------------------+                     |
+                |  LSM Hook！！！      +---------------------+
+                +---------------------+
+
+                +---------------------+
+                |  Complete Request   |
+                +---------------------+
+
+                +---------------------+
+                |      inode          |
+                +---------------------+
+
+从图可知，【SEAndroid安全机制】与【传统的Linux UID/GID安全机制】是【并存关系】，它们同时用来约束进程的权限。
+当一个进程访问一个文件的时候，首先要通过基于UID/GID的DAC安全检查，接着才有资格进入到基于SEAndroid的MAC安全检查，只要其中的一个检查不通过，
+那么进程访问文件的请求就会被拒绝。
+
+
+----------------------------------------------------------------------------------------
+SELinux安全策略：
+-----------------------------------------------------------------------------------------
+SEAndroid是一种基于安全策略的MAC安全机制。这种安全策略又是建立在【对象】的安全上下文基础上的。
+这里所说的对象分为两种类型：
+  主体（Subject，通常就是指进程）和
+  客体（Object， 指进程所要访问的资源，例如文件、系统属性等）。
+
+SEAndroid安全机制中的安全策略，就是在安全上下文的基础上进行描述的，也就是说，它通过主体和客体的安全上下文，定义主体是否有权限访问客体。
+
+-----------------------------------------------------------------------------------------
+安全上下文：
+-----------------------------------------------------------------------------------------
+安全上下文，实际上就是一个附加在对象上的标签（label）。
+这个标签是一个字符串，它由四部分内容组成：
+
+    SELinux用户、SELinux角色、类型、安全级别      //每一个部分都通过一个冒号来分隔，格式为“user:role:type:sensitivity”。
+
+【文件】init.rc的安全上下文类似如下：（ $ls -Z /init.rc）
+    -rwxr-x--- root     root    u:object_r:rootfs:s0 init.rc
+
+【进程】init的安全上下文类似如下：（$ps -Z）
+    LABEL                          USER     PID  PPID  NAME
+   u:r:init:s0                    root         1       0        /init
+
+其实在安全上下文中，只有类型（Type）才是最重要的，SELinux用户、SELinux角色和安全级别都几乎可以忽略不计的。
+正因为如此，SEAndroid安全机制又称为是基于TE（Tyoe Enforcement）策略的安全机制。
+-----------------------------------------------------------------------------------------
+用户和角色:
+-----------------------------------------------------------------------------------------
+对于进程来，SELinux用户和SELinux角色只是用来限制进程可以标注的类型。对于文件来说，SELinux用户和SELinux角色就可以完全忽略不计。
+
+通常：
+    进程的安全上下文中，用户固定为 u，角色固定为 r。
+    文件的安全上下文中，用户固定为 u，角色固定为 obejct_r。
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+以下は、SELinux を実行する Linux 上でプロセス、Linuxユーザー、ファイルに使用されるセキュリティー関連の情報を含むラベルの例です。
+この情報は SELinux コンテキスト と呼ばれ、以下のコマンドを実行すると表示できます:
+
+$ ls -Z file1
+-rwxrw-r-- user1 group1 unconfined_u:object_r:user_home_t:s0     file1
+
+この例では、SELinux は ユーザー (unconfined_u)、ロール (object_r)、タイプ (user_home_t)、およびレベル (s0) を示しています。
+
+この情報は、アクセス制限の決定に使用されます。
+DAC では、アクセスは Linux ユーザー ID とグループ ID のみに基づいて制御されます。
+SELinux ポリシールールは、DAC ルールの 後 でチェックされることを覚えておくことが重要です。
+DAC ルールが最初にアクセスを拒否すると、SELinux ポリシールールは使用されません。
+
+注記
+SELinux を実行する Linux OS上には、Linuxユーザーと SELinuxユーザーがいます。
+SELinuxユーザーは、SELinux ポリシーの一部です。
+Linuxユーザーは SELinux ユーザーにマッピングされています。
+-----------------------------------------------------------------------------------------
+安全级别
+-----------------------------------------------------------------------------------------
+在SELinux中，安全级别是可选的，也就是说，可以选择启用或者不启用。通常在进程及文件的安全上下文中,安全级别都设置为s0
+-----------------------------------------------------------------------------------------
+类型
+-----------------------------------------------------------------------------------------
+进程的安全上下文的类型,称为 domain,
+文件的安全上下文的类型,称为 file_type。
+
+上面我们看到init进程的安全上下文为 u:r:init:s0    //init进程的type为init，这也是合法的. 为什么呢？
+
+因为在Android中我们可以通过如下语句定义type:
+      type init domain; //即将domain置为init的属性，这样就可以用init为type来描述进程的安全上下文了。
+
+-----------------------------------------------------------------------------------------
+安全上下文描述
+-----------------------------------------------------------------------------------------
+安全上下文,根据主体(Subject,多指Process)对象不同，有如下几种：
+
+在Android O上，一般都存放在/system/sepolicy/private/目录下:
+---------------------------------------------
+1. mac_permissions.xml 
+---------------------------------------------
+                          //用于给不同签名的App分配不同的seinfo字符串.
+                          //例如，在AOSP源码环境下编译并且使用平台签名的App获得的seinfo为“platform”。
+                          //这个seinfo描述的是其实并不是安全上下文中的Type，它是用来在另外一个文件seapp_contexts中查找对应的Type的。
+
+<?xml version="1.0" encoding="utf-8"?>
+<policy>
+    <!-- Platform dev key in AOSP -->
+    <signer signature="@PLATFORM" >
+      <seinfo value="platform" />
+    </signer>
+
+    <!-- Media key in AOSP -->
+    <signer signature="@MEDIA" >
+      <seinfo value="media" />
+    </signer>
+
+</policy>
+
+---------------------------------------------
+2. seapp_contexts：
+---------------------------------------------
+用于声明APP进程和创建数据目录的安全上下文，
+Android O上将该文件拆分为plat和nonplat 前缀的两个文件，
+plat   前缀的文件用于声明system app，
+nonplat前缀的文件用于声明vendor app。
+
+seapp_contexts文件内部内容：
+...
+# only the package named com.android.shell can run in the shell domain
+neverallow domain=shell name=((?!com\.android\.shell).)*
+neverallow user=shell name=((?!com\.android\.shell).)*
+
+# Ephemeral Apps must run in the ephemeral_app domain
+neverallow isEphemeralApp=true domain=((?!ephemeral_app).)*
+
+isSystemServer=true domain=system_server
+user=_app      seinfo=platform name=com.android.traceur domain=traceur_app type=app_data_file levelFrom=all
+user=system    seinfo=platform domain=system_app type=system_app_data_file
+user=bluetooth seinfo=platform domain=bluetooth type=bluetooth_data_file
+user=nfc       seinfo=platform domain=nfc type=nfc_data_file
+user=secure_element seinfo=platform domain=secure_element levelFrom=all
+user=radio     seinfo=platform domain=radio type=radio_data_file
+user=shared_relro domain=shared_relro
+user=shell     seinfo=platform domain=shell name=com.android.shell type=shell_data_file
+user=webview_zygote seinfo=webview_zygote domain=webview_zygote
+user=_isolated domain=isolated_app levelFrom=all
+user=_app seinfo=media domain=mediaprovider name=android.process.media type=app_data_file levelFrom=user
+user=_app seinfo=platform domain=platform_app type=app_data_file levelFrom=user
+user=_app isV2App=true isEphemeralApp=true domain=ephemeral_app type=app_data_file levelFrom=all
+user=_app isPrivApp=true domain=priv_app type=app_data_file levelFrom=user
+user=_app minTargetSdkVersion=28 domain=untrusted_app type=app_data_file levelFrom=all
+user=_app minTargetSdkVersion=26 domain=untrusted_app_27 type=app_data_file levelFrom=user
+user=_app domain=untrusted_app_25 type=app_data_file levelFrom=user
+
+从前面的分析可知，对于使用平台签名的App来说，它的seinfo为“platform”。
+这样我们就可以知道，使用平台签名的App所运行在的进程domain为“platform_app”，并且它的数据文件的file_type为“platform_app_data_file”。
+---------------------------------------------
+3 File_contexts：
+---------------------------------------------
+用于声明文件的安全上下文，
+plat   前缀的文件用于声明system、rootfs、data等与设备无关的文件。
+Nonplat前缀的文件用于声明vendor、data/vendor 等文件。
+
+...
+/system(/.*)?         u:object_r:system_file:s0
+/system/bin/atrace    u:object_r:atrace_exec:s0
+...
+
+如上，/system目录包括子目录和文件的安全上下文为u:object_r:system_file:s0，
+这意味着只有有权限访问type为system_file的资源的进程,才可以访问这些文件。
+---------------------------------------------
+4 Service_contexts
+---------------------------------------------
+/system/sepolicy/private/service_contexts
+
+用于声明java service 的安全上下文， 
+Android O上将该文件拆分为plat和nonplat前缀的两个文件，但nonplat前缀的文件并没有具体的内容（vendor和system java service不允许binder操作）
+
+---------------------------------------------
+5 Property_contexts
+---------------------------------------------
+/system/sepolicy/private/property_contexts
+
+用于声明属性的安全上下文，plat 前缀的文件用于声明system属性，nonplat前缀的文件用于声明vendor 属性。
+....
+gsm.       u:object_r:radio_prop:s0
+ro.ril.    u:object_r:radio_prop:s0
+.....
+如上，ril.开头的属性的安全上下文为u:object_r:radio_prop:s0，这意味着只有有权限访问Type为radio_prop的资源的进程才可以访问这些属性。
+
+---------------------------------------------
+6 hwservice_contexts
+---------------------------------------------
+/system/sepolicy/private/hwservice_contexts
+
+Android O 上新增文件，用于声明HIDL service 安全上下文。
+...
+android.hardware.media.omx::IOmx                                u:object_r:hal_omx_hwservice:s0
+android.hardware.media.omx::IOmxStore                           u:object_r:hal_omx_hwservice:s0
+android.hardware.memtrack::IMemtrack                            u:object_r:hal_memtrack_hwservice:s0
+android.hardware.neuralnetworks::IDevice                        u:object_r:hal_neuralnetworks_hwservice:s0
+android.hardware.nfc::INfc                                      u:object_r:hal_nfc_hwservice:s0
+android.hardware.oemlock::IOemLock                              u:object_r:hal_oemlock_hwservice:s0
+...
+如上，android.frameworks.sensorservice::ISensorManager的hw service的安全上下文为u:object_r:fwk_sensor_hwservice:s0，
+这意味着只有有权限访问Type为fwk_sensor_hwservice的资源的进程才可以访问这些hw service。
+
+
+-----------------------------------------------------------------------------------------
+安全策略
+-----------------------------------------------------------------------------------------
+上面分析了SEAndroid安全机制中的对象[安全上下文]，接下来就继续分析SEAndroid安全机制中的[安全策略]。
+
+前面提到，SEAndroid安全机制又称为是基于TE（Type Enforcement）策略的安全机制。
+
+所有安全策略都存放在.te结尾的文件中.
+
+一般放在 /system/sepolicy/private/，
+厂商定制的一般放在/device/xxx/common/sepolicy/下，如/system/sepolicy/private/app.te：
+
+一个Type所具有的权限是通过allow语句来描述的，
+SEAndroid使用的是最小权限原则，也就是说，只有通过allow语句声明的权限才是允许的，而其它没有通过allow语句声明的权限都是禁止，这样就可以最大限度地保护系统中的资源。
+
+语句格式为：allow scontex tcontex:class action
+
+    scontex 主体安全上下文
+    tcontex 客体安全上下文
+    class   客体对应的资源
+    action  赋给主体的权限
+
+例1：allow appdomain zygote_tmpfs:file read;   //即允许appdomain的app对zygote_tmpfs类型的文件进行读操作。
+例2：allow { appdomain -isolated_app } rootfs:lnk_file r_file_perms;//即允许除去isolated_app的appdomain的app对rootfs类型的链接文件进行r_file_perms操作。
+
+除了allow还有：
+neverallow （检查并记录是否有违反这条策略的）、
+allowaudit（检查记录权限成功及失败的操作，默认只记录检查失败的）、
+dontaudit（不记录权限检查失败的记录），后三个仅是检查及记录，并不赋予或禁止权限。
+
+
+至此，我们知道SELinux是基于安全策略的MAC安全机制，用来弥补DAC的不足，
+安全策略、是在安全上下文基础上来描述的，安全上下文中重点是类型Type，因此SELinux又叫基于TE的安全机制。
+
+ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+SELinux的整体架构：
+ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+===========================================================================================================================
+2 Android 5.1 & SELinux
+===========================================================================================================================
+SEAndroid背景:
+     Android对于操作系统安全性方面的增强一直沿用Linux内核所提供的MAC强制访问控制套件SELinux，对权限进行了更为深度的管理，
+     有效地控制着进程对资源的访问。
+     2012年才问世的SE Android将SELinux移植到Android平台上，以降低恶意应用程序攻击带来的损害，提供Android系统的防御能力。
+
+     SE Android(Secutity-Enhanced Android)是Android与SE Linux的结合，由美国NSA在2012年推出的Android操作系统的安全强化套件，
+     以支持在Android平台上使用SE Linux。
+     
+     SE Android 将原来应用在Linux操作系统上的MAC强制访问控制套件SELinux移植到Android平台上，其目的在于降低恶意应用程序攻击带来的损害。
+     然而SE Android的范畴并不局限于SELinux，它通过强化Android操作系统对应用程序的访问控制，增强应用程序之间的隔离效果，
+     确保每个应用程序之间的独立运作，建立类似于沙盒的隔离效果，从而阻止恶意应用程序对系统或其他应用程序的攻击。
+     
+     Android是建立在标准的Linux Kernel 基础上, 自然也可以开启SELinux, 通常在通用移动平台上, 很少开启这样的安全服务, 
+     Google 为了进一步增强Android 的安全性, 经过长期的准备,目前已经在Android 5.0(L) 上完整的开启SELinux, 并对SELinux 进行
+     深入整合形成了SEAndroid.
+ 
+ 
+SEAndroid安全策略概述:
+     SE Android的策略源码位置在external/sepolicy，其中包含用来生成SELinux内核策略文件的源代码。
+
+以下是Android 5.1的策略文件结构树:
+
+external/sepolicy
+|.
+├── access_vectors
+├── adbd.te
+├── Android.mk
+├── app.te
+├── attributes
+├── binderservicedomain.te
+├── bluetooth.te
+├── bootanim.te
+├── clatd.te
+├── debuggerd.te
+├── device.te
+├── dex2oat.te
+├── dhcp.te
+├── dnsmasq.te
+├── domain.te
+├── drmserver.te
+├── dumpstate.te
+├── file_contexts           //
+├── file.te
+├── fs_use
+├── genfs_contexts          //
+├── global_macros
+├── gpsd.te                 //
+├── hci_attach.te
+├── healthd.te
+├── hostapd.te
+├── initial_sid_contexts
+├── initial_sids
+├── init_shell.te
+├── init.te
+├── inputflinger.te
+├── installd.te
+├── install_recovery.te
+├── isolated_app.te
+├── kernel.te
+├── keys.conf
+├── keystore.te
+├── lmkd.te
+├── logd.te
+├── mac_permissions.xml     //
+├── mdnsd.te
+├── mediaserver.te
+├── mls
+├── mls_macros
+├── mtp.te
+├── netd.te
+├── net.te
+├── nfc.te
+├── NOTICE
+├── platform_app.te
+├── policy_capabilities
+├── port_contexts
+├── ppp.te
+├── property_contexts
+├── property.te
+├── racoon.te
+├── radio.te
+├── README
+├── recovery.te
+├── rild.te
+├── roles
+├── runas.te
+├── sdcardd.te
+├── seapp_contexts
+├── security_classes
+├── selinux-network.sh
+├── service_contexts
+├── servicemanager.te
+├── service.te
+├── shared_relro.te
+├── shell.te
+├── surfaceflinger.te
+├── su.te
+├── system_app.te
+├── system_server.te
+├── tee.te
+├── te_macros
+├── tools
+│   ├── Android.mk
+│   ├── checkfc.c
+│   ├── check_seapp.c
+│   ├── insertkeys.py
+│   ├── post_process_mac_perms
+│   ├── README
+│   ├── sepolicy-analyze
+│   │   ├── Android.mk
+│   │   ├── dups.c
+│   │   ├── dups.h
+│   │   ├── neverallow.c
+│   │   ├── neverallow.h
+│   │   ├── perm.c
+│   │   ├── perm.h
+│   │   ├── README
+│   │   ├── sepolicy-analyze.c
+│   │   ├── typecmp.c
+│   │   ├── typecmp.h
+│   │   ├── utils.c
+│   │   └── utils.h
+│   └── sepolicy-check.c
+├── ueventd.te
+├── unconfined.te
+├── uncrypt.te
+├── untrusted_app.te
+├── users
+├── vdc.te
+├── vold.te
+├── watchdogd.te
+├── wpa.te
+└── zygote.te
+ 
+SELinux内核策略文件包含
+        file_contexts配置文件、
+        genfs_contexts配置文件、
+        property_contexts配置文件、
+        seapp_contexts配置文件 和 
+        mac_permissions.xml配置文件，
+
+SE Android项目的开发人员仍然在对Android系统安全进行深入的研究，因此这些策略配置也处在随时变化中。其中
+        genfs_contexts配置文件、
+        property_contexts配置文件和
+        seapp_contexts配置文件
+        
+是专门为SE Android系统创建的，因此不属于传统SELinux策略,这些策略文件是在Android系统编译过程中产生并且被添加到ramdisk镜像当中，
+因此可以保证这些策略在系统启动的初期，映射系统分区之前，最先被加载。
+
+一旦数据分区被加载后，可以将策略文件放置在/data/system目录下并且将selinux.reload_policy属性置为1
+(使用setprop selinux.reload_policy 1 命令)，
+之后重新加载/data/system目录下的策略文件，
+这种设置将会触发系统的init进程重新加载策略，同时重新启动ueventd和installd进程以保证它们可以重新加载与这两个服务相关的策略。
+
+需要注意的是，对于内核策略，需要在主机的编译环境中，重新编译sepolicy(make policy)，并且更新到/data/system中，
+如果希望每次设备启动时都会自动加载/data/system下的策略文件，需要将setprop命令添加到init.rc(system/core/rootdir/init.rc)中。
+ 
+1 seapp_contexts配置文件:
+Android L(5.1) seapp_contexts文件内容：
+
+ 1 # Input selectors:
+ 2 #     isSystemServer (boolean)
+ 3 #     user (string)
+ 4 #     seinfo (string)
+ 5 #     name (string)
+ 6 #     path (string)
+ 7 #     sebool (string)
+ 8 # isSystemServer=true can only be used once.
+ 9 # An unspecified isSystemServer defaults to false.
+10 # An unspecified string selector will match any value.
+11 # A user string selector that ends in * will perform a prefix match.
+12 # user=_app will match any regular app UID.
+13 # user=_isolated will match any isolated service UID.
+14 # All specified input selectors in an entry must match (i.e. logical AND).
+15 # Matching is case-insensitive.
+16 #
+17 # Precedence rules:
+18 #        (1) isSystemServer=true before isSystemServer=false.
+19 #       (2) Specified user= string before unspecified user= string.
+20 #       (3) Fixed user= string before user= prefix (i.e. ending in *).
+21 #       (4) Longer user= prefix before shorter user= prefix.
+22 #       (5) Specified seinfo= string before unspecified seinfo= string.
+23 #       (6) Specified name= string before unspecified name= string.
+24 #       (7) Specified path= string before unspecified path= string.
+25 #       (8) Specified sebool= string before unspecified sebool= string.
+26 #
+27 # Outputs:
+28 #     domain (string)
+29 #     type (string)
+30 #     levelFrom (string; one of none, all, app, or user)
+31 #     level (string)
+32 # Only entries that specify domain= will be used for app process labeling.
+33 # Only entries that specify type= will be used for app directory labeling.
+34 # levelFrom=user is only supported for _app or _isolated UIDs.
+35 # levelFrom=app or levelFrom=all is only supported for _app UIDs.
+36 # level may be used to specify a fixed level for any UID.
+37 #
+38 isSystemServer=true domain=system_server
+39 user=system domain=system_app type=system_app_data_file
+40 user=bluetooth domain=bluetooth type=bluetooth_data_file
+41 user=nfc domain=nfc type=nfc_data_file
+42 user=radio domain=radio type=radio_data_file
+43 user=shared_relro domain=shared_relro
+44 user=shell domain=shell type=shell_data_file
+45 user=_isolated domain=isolated_app
+46 user=_app seinfo=platform domain=platform_app type=app_data_file
+47 user=_app domain=untrusted_app type=app_data_file
+48 #user=_app seinfo=lenovoapp domain=platform_app type=app_data_file
+49 user=_app seinfo=lenovordvr domain=platform_app type=app_data_file
+50 user=_app seinfo=lenovordvm domain=platform_app type=app_data_file
+51 user=_app seinfo=lenovordvs domain=platform_app type=app_data_file
+52 user=_app seinfo=lenovordvp domain=platform_app type=app_data_file
+53 user=_app seinfo=lenovopadr domain=platform_app type=app_data_file
+54 user=_app seinfo=lenovopadm domain=platform_app type=app_data_file
+55 user=_app seinfo=lenovopads domain=platform_app type=app_data_file
+56 user=_app seinfo=lenovopadp domain=platform_app type=app_data_file
+
+seapp_contexts文件用来标记[应用程序的进程]和[应用程序包所在的目录]。该文件的源位置在external/sepolicy目录下，
+
+下面是可以在其中设置的选项(输入)
+1).isSystemServer :布尔值，匹配系统级服务程序，在文件中只能被定义为真(true)一次，默认值为假(false)
+2).user  :字符串，匹配应用程序的用户，若为空或没有定义为任意用户，以*结尾的字符串将进行前缀匹配。user=_app将匹配任何一般应用UID，user=_isolated将匹配任意被隔离的服务UID
+3).seinfo:字符串，匹配SELinux控制类型
+4).name  :字符串，匹配应用名称，如com.android.deskclock
+5).sebool:字符串，匹配布尔值，该字符串定义的布尔值为真时匹配
+
+SELinux会通过该定义文件，为匹配的应用程序找到对应的结果(输出)
+1).domain:字符串，程序所属于域
+2).type  :字符串，程序所属类型
+3).levelFromUid:布尔值，是否根据UID设置程序级别，当前只针对应用程序的UID。
+4).level：字符串，应用程序的级别
+--------------------------------------------根据这个结果，SELinux会为【应用程序进程】以及【目录】【分配相应的权限】。
+
+
+2 property_contexts配置文件：
+
+Android L(5.1) property_contexts文件内容：
+ 1 ##########################
+ 2 # property service keys
+ 3 #
+ 4 #
+ 5 net.rmnet               u:object_r:net_radio_prop:s0
+ 6 net.gprs                u:object_r:net_radio_prop:s0
+ 7 net.ppp                 u:object_r:net_radio_prop:s0
+ 8 net.qmi                 u:object_r:net_radio_prop:s0
+ 9 net.lte                 u:object_r:net_radio_prop:s0
+10 net.cdma                u:object_r:net_radio_prop:s0
+11 net.dns                 u:object_r:net_radio_prop:s0
+12 sys.usb.config          u:object_r:system_radio_prop:s0
+13 ril.                    u:object_r:radio_prop:s0
+14 gsm.                    u:object_r:radio_prop:s0
+15 persist.radio           u:object_r:radio_prop:s0
+16 
+17 net.                    u:object_r:system_prop:s0
+18 dev.                    u:object_r:system_prop:s0
+19 runtime.                u:object_r:system_prop:s0
+20 hw.                     u:object_r:system_prop:s0
+21 sys.                    u:object_r:system_prop:s0
+22 sys.powerctl            u:object_r:powerctl_prop:s0
+23 service.                u:object_r:system_prop:s0
+24 wlan.                   u:object_r:system_prop:s0
+25 dhcp.                   u:object_r:dhcp_prop:s0
+26 dhcp.bt-pan.result      u:object_r:pan_result_prop:s0
+27 bluetooth.              u:object_r:bluetooth_prop:s0
+28 
+29 debug.                  u:object_r:debug_prop:s0
+30 debug.db.               u:object_r:debuggerd_prop:s0
+31 log.                    u:object_r:shell_prop:s0
+32 service.adb.root        u:object_r:shell_prop:s0
+33 service.adb.tcp.port    u:object_r:shell_prop:s0
+34 
+35 persist.audio.          u:object_r:audio_prop:s0
+36 persist.logd.           u:object_r:logd_prop:s0
+37 persist.sys.            u:object_r:system_prop:s0
+38 persist.service.        u:object_r:system_prop:s0
+39 persist.service.bdroid. u:object_r:bluetooth_prop:s0
+40 persist.security.       u:object_r:system_prop:s0
+41 
+42 # selinux non-persistent properties
+43 selinux.                u:object_r:security_prop:s0
+44 
+45 # default property context
+46 *                       u:object_r:default_prop:s0
+47 
+48 # data partition encryption properties
+49 vold.                   u:object_r:vold_prop:s0
+50 crypto.                 u:object_r:vold_prop:s0
+51 
+52 # ro.build.fingerprint is either set in /system/build.prop, or is
+53 # set at runtime by system_server.
+54 build.fingerprint       u:object_r:fingerprint_prop:s0
+55 
+56 # ctl properties
+57 ctl.bootanim            u:object_r:ctl_bootanim_prop:s0
+58 ctl.dumpstate           u:object_r:ctl_dumpstate_prop:s0
+59 ctl.fuse_               u:object_r:ctl_fuse_prop:s0
+60 ctl.mdnsd               u:object_r:ctl_mdnsd_prop:s0
+61 ctl.ril-daemon          u:object_r:ctl_rildaemon_prop:s0
+62 ctl.bugreport           u:object_r:ctl_bugreport_prop:s0
+63 ctl.dhcpcd_bt-pan       u:object_r:ctl_dhcp_pan_prop:s0
+64 ctl.                    u:object_r:ctl_default_prop:s0
+65 
+66 # NFC properties
+67 nfc.                    u:object_r:nfc_prop:s0
+68 # DOLBY_START
+69 dolby.audio             u:object_r:audio_prop:s0
+70 dolby.                  u:object_r:system_prop:s0
+71 # DOLBY_END
+
+property_contexts配置文件，为权限检查定义了Android系统各属性(getproperty命令出来的那些属性?)间的安全关联。
+
+该文件为系统中的每一种服务类型【定义了不同的属性】，包括用户(user)、角色(role)、属性(property)和级别(level)。
+
+一种应用程序在调用某一服务资源时，系统将会根据这些属性，检查是否有权限使用这些资源。
+
+以下是目前各项属性可用的值。
+     1) 用户：u，系统默认，唯一值
+     2) 角色：object_r ，系统默认，唯一值
+     3) 属性：默认属性是default_prop，其他属性分别是：见上，如net_radio_prop、system_radio_prop、shell_prop ...
+     4) 级别：s0 ,系统默认，唯一值
+
+
+3 SELinux在Android上的演变过程：
+1) KK 4.4 针对netd, installd, zygote, vold 四个原本具有root 权限的process, 以及它们fork 出的子进程启用Enforce模式.
+2) L 版本普遍性开启SELinux Enforce mode.
+3) Permissive 模式，只打印audit 异常LOG，不拒绝请求, Enforce 模式，即打印audit 异常LOG, 也拒绝请求
+ 
+
+4 SELinux给Android带来了哪些影响：
+   1) 严格限制了ROOT 权限, 以往ROOT "无法无天" 的情况将得到极大的改善.
+   2) 通过SELinux保护, 降低系统关键进程受攻击的风险, 普通进程将没有权限直接连接到系统关键进程.
+   3) 进一步强化APP的沙箱机制, 确保APP难以做出异常行为或者攻击行为.
+   4) 将改变APP一旦安装, 权限就已经顶死的历史, APP权限动态调整将成为可能.
+
+参考文献：
+1) Android安全机制解析与应用实践(吴倩/赵晨啸)
+2) MTK-SELinux问题快速分析
