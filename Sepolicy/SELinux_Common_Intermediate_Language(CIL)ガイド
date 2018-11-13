@@ -1,0 +1,4496 @@
+
+SELinux CIL リファレンスガイド
+SELinux_Common_Intermediate_Language(CIL)
+
+
+Introduction:
+SELinux Common Intermediate Language (CIL)は、
+よりハイレベルなポリシー言語(すなわち、現在のモジュール言語)と低レベルなKernelポリシー言語の間の言語としてデザインされたものです。
+この中間言語を用いることで、幾つか恩恵を受けられます:
+
+複数のハイレベル言語を作ることにより、低レベルなKernelポリシー(例えばinterface)よりもより多機能の機能を提供することが出来ます。 これらの機能によりCILを用いて言語間の相互運用性を高める事ができます。
+
+ハイレベル言語を作成することを用意にし、よりドメイン特有のポリシー言語(例えば、CDS Framework, Lobster, Shrimpなど)の作成を促進します。
+
+ポリシー解析にリッチで適切な意味のある表現を提供することにより、複数のハイレベル言語の出力を解析する際に、単一の解析ツールで必要なハイレベル情報を失うことがなくなります。
+
+設計理念：
+CILは幾つかのキーとなる決定原則に基づいています:
+
+中間言語となること - リッチで意味のある表現は、多言語間の相互運用性で必要なために提供されているのであり、利便性を提供するためではありません。 もし、ある機能が多言語間の相互運用性を犠牲にすることなくハイレベル言語で利用できるのであれば、その機能は残します。少ないことほど、より豊かなことです。
+
+簡単な解析と生成を促していきます - 明確で、シンプルな文法を使うことにより、ハイレベルのコンパイラ／解析ツール／ポリシー生成ツールでの簡単な解>析と生成が可能となります。人間が読み書きするべきハイレベルな代替言語で競合が発生した場合には、機械処理のプライオリティは人間の処理よりも高くなるべきです。
+
+完全に、そして忠実にカーネル言語を表す - CILの究極のゴールはkernelにより強制されるポリシーを生成することです。そのポリシーは完全に表現されていなくてはならないため、CILで全てのポリシーが表現されている必要が有ります。そしてその表現は飾られていたり、曖昧だったりkernelポリシーを隠しているべきではありません。CILはハイレベル言語に意味のある表現を付加することができますが、カーネルに強制される本質を取り去るべきではありません。 C (ポータブルなアセンブラ)は実用的な言語では無いのです（これはプロセッサーを実際の動作から隠してしまいます）。
+
+一番いいバイナリファイルフォーマットは存在しないことです - CILはソースポリシー由来のものなので、そういう意味で仮定して活用するべきものです。バイナリポリシフォーマットの行き着くところは、カーネルとコミュニケーションするだけのためのものになります。
+
+後方互換性を保ちながら、それに振り回されないように - ソースはバイナリではなく、既存のポリシーと互換性を持つことはゴールではあるが、絶対条件ではありません。しかし、手動や自動での自由なポリシ変換は、CILに説得力を与えます。
+
+壊れていないものを治そうとしないこと - CLIはSELinuxポリシに大胆な変更を行うことができるチャンスですが、すでにうまくいっているコアコンセプトを再考する理由はありません。既存の言語構造の変更にはすべて、明白で切実な理由が必要です。 現在のポリシーを保持するキーとなる特徴はオーダー独立型で、宣言型のスタイルです。
+
+M4はもういりません - 一般的に広く使われているM4と前処理はポリシ作成の難しさを軽減してくれますが、副作用として多くの不要な問題の元となってしまいます。CILでは前処理の必要性を廃絶させる必要があります。
+
+コンパイルの作業を全体ではなくモジュールごとにシフトします - 現在のツールチェーンのパフォーマンスはしばしばポリシのサイズに影響されますし、すべてのポリシーをロードする際にプロセッサを多く使ってしまいます。可能であれば、ひとつのモジュールごとにコンパイルできるようにすることでパフォーマンスを向上させることができます。少なくとも、グローバルポリシー上の作業を生み出してしまう言語構造を明確に識別し管理します。
+
+ゴールと重要な機能
+CIL は現在のポリシ言語とツールを使っても獲得することが難しいか不可能な機能を有効にするために作られています。普遍性は常に目標ですが、 CILでもいくつかの、よく知られており、明確な動機付け言語のニーズがあります。
+
+アップデートを壊さずにポリシのカスタマイズを行うこと - SELinuxでの最も難しい課題の一つとして、システムビルダーや管理者にシステム上のアクセス権 変更を許可させること -希望しないアクセス権を除くことを含みます - そしてアプリケーションの将来のベンダからのポリシ更新を妨げないことも担保します。従っ>て管理者は、ベンダが出荷したポリシーファイルを直接変更する必要なしに、ポリシを変更することができるようにするのが望ましいです。これが明白に見えるケース は、管理者がすでに用意されているポリシーブーリアンで制御されていないアクセス権を削除したい場合です。
+
+インターフェースが第一級言語機能となります - インターフェースと、そしてマクロは、ポリシ作成者に関係するアクセス権を定義させ、新たなタイプを定義する際にアクセス権を付与する事ができる、成功したメカニズムでした。しかしながら、この成功はまた一方で、インターフェースがもっぱらプリプロセッサ構造部分を持っていることにより、コンパイラや管理ツール、解析ツールによる解析をを妨害していました。これは、インターフェイスへの変更が含まれるようにすべてのモジュールを再コンパイルする必要があるなど、多くの意図しない結果を持っています。インターフェイスやいくつかの類似の構造は、第一級言語機能となる必要があります。
+
+リッチなポリシの関係性 - テンプレート、インターフェース、そしてアトリビュートは現在、共通で必要なアクセス権を新しいタイプやタイプセットに迅速に与えるためだけのものです。しかしながら、これらの構造はポリシーのUp-Frontデザイナーにとって、システムビルダーによって制限したり、管理者が迅速に既存のポリシーを元に作成するために必要なものです。ポリシの製作者は、既存のポリシをベースとして、大なり小なりの変更で新しいタイプやモジュールを作成する必要があります。これらの機能は、既存のタイプに関係する新しいタイプやモジュールをアドホックに作成できるようにしてあげる必要があります。
+
+ポリシ管理のサポート - semanageや関係するツールは現在、プライベートなデータストアとコードを用いて直接、カーネルにロードするためにバイナリフォーマットを生成する前にポリシー修正を行えます。これらのツールは、同じゴールを目指すために、CILを生成したり破壊できる必要があります。
+
+デザインの概要
+デザインは単純化を提供する目標でいくつかの方法が取られています:
+
+文法は極度に汎用的で、解析しやすいS式(S-expression)が使われています。
+
+記述文は最小限度になるようにしています。ひとつの - たった一つの - 方法で与えられた文法を表現するようになっています。
+
+記述方法は明確になっており、定義された方法でオーバーラップしています。これは現在の言語 - 例えば、roleの記述では、宣言や、その他の定義や、お互いに依存している条件がある - とは明確に対象的になっています。
+
+言語、例えば現在のポリシー言語は、宣言型です。これは、以前の言語からの発注の制約をすべて削除します。最後に、言語は単純なコンパイルユニットをソースとして実行されます。もはやモジュールごとのコンパイルは存在しません。これには有利な点(コンパイルしたディスクが必要でなく、エラーレポートも良くなり、単純なプロセスになる）と、ディスクスペース上で不利になるという点があります。しかしながら、リンクされたバイナリポリシーモジュールはメモリー上に表現されていなければならないため、問題にはなりません。これは、多くの場合、言語の宣言型の性質上、自然な結果です。
+
+多くの場合、デザインドキュメントでは現在の言語とCILの違いについて記載されています。例えば、typeは完全に同じsemanticとなりますが、CILでは異なる宣言文や参照文について異なった文法を使っています。その結果、typeのsemanticについての記述には量を割かれず、少しだけのスペースが新しいCILの機能に関しての記述にだけ使われています。対照的に、CILでは作成/管理/ネームスペーストラバースに関しては新しく作られています。それらの機能のsemanticに関して、同様のスペースが割かれています。
+
+現状のsemanticを参照した時、現状では一般的な使い方の中で、3つのポリシ言語に別れているということに注意しておくべきである: リファレンポリシの文法はM4で生成されており（インターフェースとテンプレートを含む）、モジュールの文法はcheckmoduleによって理解され、一般的にkernelポリシと呼ばれているものはcheckpolicyにより理解されています。一般的に、CILは現在のKernelポリシを（ほとんど変更なしに異なった文法というだけで)保ち、モジュール言語と、リファレンスポリシーと、新しい新型の機能のレイヤを保ちます。現在のsemanticを語るとき、コンテキストが明確でない場合には、 どのポリシ言語が参照されているかを試みようとします。
+
+CILの情報
+全てのステートメントの組み合わせを網羅しているわけではありませんが、その他のフォーマットを試せる充分なバリエーションは載っているはずです。その他の例として、testディレクトリの policy.cil ファイルがあります。
+
+コンテキストのMLSコンポーネントとユーザステートメントは、ポリシがMCS/MLSをサポートしていなくても、宣言する必要があります。
+
+最低限のもの: 一つの allow ルール, 一つの sid, sidorder と sidcontext ステートメントが無い限り、CILコンパイラはポリシをビルドしません。
+
+ロール object_r は、明示的に使用されているラベルオブジェクトのコンテキストに関連付けられている必要があります。オリジナルの checkpolicy(8) と checkmodule(8) コンパイラはこれをデフォルトで行っていました - CILはそうではありません。
+
+CILは class ステートメントをネームスペースで宣言される事を許可することに留意してください。しかしながら、ポリシ作成者はアプリケーション (とカーネル)が一般的にクラスをそのよく知られているクラス識別子(例えばzygote)によって参照されることに注意する必要があります。もしネームスペースで宣言されているならば (例えば (block zygote (class zygote (...))) 又は (block zygote (class class (...)))) ネームスペースで前に置きます (例えば zygote.zygote 又は zygote.class)。 アプリケーション/カーネルコードが更新される場合を除いて、クラスは名前解決されず、従ってクラスはグローバルネームスペース内で宣言されることを推奨します。
+
+ソース/ターゲットの allow ルールを複数の個別のtypeによるallow ルールの代わりに定義するときに、typeattributeを使用することが可能です。これはより小さいカーネルポリシファイルを生成します。
+
+サイトで言語を説明していますが、いくつかのステートメント定義は更新されています。
+
+宣言
+宣言はネームドあるいはanonymousで、3つの異なった形式があります:
+
+ネームド宣言 - これらは名前や識別子を導入する新しいオブジェクトを作成します。例えば:
+
+(type process) - type をprocessの識別子で作成します。
+
+(typeattribute domain) - typeattribute をdomainの識別子で作成します。
+
+(class file (read write)) - class を、readとwriteパーミッションが関連付けられているfile識別子で作成します。
+
+タイプステートメントの宣言のキーワードリストは下記になります:
+
+block optional common class classmap classmapping sid user role roleattribute type classpermission classpermissionset typeattribute typealias tunable sensitivity sensitivityalias category categoryalias categoryset level levelrange context ipaddr macro policycap
+明白なanonymousの宣言 - これらは現在、直接ステートメントの中で括弧でエンクローズ出来る(127.0.0.1)や(::1)等のIPアドレスのみに制限されています。例は、Network Labeling Statements セクションを参照してください。
+
+Anonymous 宣言- これらは予め宣言されており、オブジェクトはすでに存在し、従っておそらくステートメント中で名前や識別子によって参照されるものになります。例えば、次の全てのコンポーネントの宣言はコンテキストを指定する必要があります:
+
+(sensitivity s0)
+(category c0)
+(role object_r)
+
+(block unconfined
+    (user user)
+    (type object)
+)
+これによりportcon ステートメントでこれらそれぞれのコンポーネントをコンテキストをビルドするために次のように使うことが出来ます:
+
+(portcon udp 12345 (unconfined.user object_r unconfined.object ((s0) (s0(c0)))))
+定義
+ステートメントはオブジェクトを生成します。例えば:
+
+(typeattributeset domain (process)) - type 'process' を typeattribute 'domain'に加えます。
+
+(allow domain process (file (read write)))) - domain, process, file classを参照する allow ルールを加えます。
+
+定義はポリシ中で何度も繰り返し行われるかもしれません。重複はコンパイル中に単一の定義に解決されます。
+
+シンボルキャラクタセット
+シンボル (ダブルクォートで囲まれていない任意の文字列) は英数字 [a-z A-Z] [0-9] のみを含むキャラクタと続く特殊文字: \.@=/-_$%@+!|&^:をのみで構成されている必要があります。
+
+しかしながら、シンボルには特有のキャラクタセット制限があります。例えば:
+
+名前または識別子はアルファベット [a-z A-Z]から始まる必要があり、残りは英数字 [a-z A-Z] [0-9] キャラクタとアンダースコア [_] 又はハイフン [-]である必要があります。
+
+IPアドレスはIPv4 又は IPv6 フォーマットで構成されている必要があります。
+
+メモリ、ポート、IRQは数字 [0-9]である必要があります。
+
+文字列キャラクタセット
+文字列はダブルクォートで閉じられており (例えば "This is a string"), ダブルクォート (") 以外の任意のキャラクタを含みます。
+
+コメント
+コメントはセミコロン ';' から始まって、新しい行が始まるまで続きます。
+
+ネームスペース
+CILはコンテナを通したネームスペース、例えばblock ステートメントのようなものをサポートします。 blockが親/子関係で解決されるような場合にはドット '.' が使用されます。例えば以下の allow ルールでは:
+
+(block example_ns
+    (type process)
+    (type object)
+    (class file (open read write getattr))
+
+    (allow process object (file (open read getattr)))
+)
+以下のカーネルポリシ言語ステートメントを解決します:
+
+allow example_ns.process example_ns.object : example_ns.file { open read getattr };
+グローバルネームスペース
+CILには常に存在するグローバルネームスペースがあります。コンテナ外で宣言された任意のシンボルはグローバルネームスペースにあります。グローバルネームスペースのシンボルを参照するには、次の例の様にシンボルの前にドット '.' をつける必要があります:
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; This example has three namespace 'tmpfs' types declared:
+;    1) Global .tmpfs
+;    2) file.tmpfs
+;    3) other_ns.tmpfs
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; This type is the global tmpfs:
+(type tmpfs)
+
+(block file
+    ; file namespace tmpfs
+    (type tmpfs)
+    (class file (open read write getattr))
+
+    ; This rule will reference the local namespace for src and tgt:
+    (allow tmpfs tmpfs (file (open)))
+    ; Resulting policy rule:
+    ; allow file.tmpfs file.tmpfs : file.file open;
+
+    ; This rule will reference the local namespace for src and global for tgt:
+    (allow tmpfs .tmpfs (file (read)))
+    ; Resulting policy rule:
+    ; allow file.tmpfs tmpfs : file.file read;
+
+    ; This rule will reference the global namespace for src and tgt:
+    (allow .tmpfs .tmpfs (file (write)))
+    ; Resulting policy rule:
+    ; allow tmpfs tmpfs : file.file write;
+
+    ; This rule will reference the other_ns namespace for src and
+    ; local namespace for tgt:
+    (allow other_ns.tmpfs tmpfs (file (getattr)))
+    ; Resulting policy rule:
+    ; allow other_ns.tmpfs file.tmpfs : file.file getattr;
+)
+
+(block other_ns
+    (type tmpfs)
+)
+ドットをつけていないシンボルは、現在のネームスペースで検索され、その後(現在のネームスペースにシンボルネームがない場合に）グローバルネームスペースで検索されます。
+
+式
+式は以下のCILステートメント中に存在します: booleanif, tunableif, classpermissionset, typeattributeset, roleattributeset, categoryset, constrain, mlsconstrain, validatetrans, validatetrans。
+
+CIL の式では prefix 又はポーランド表記を使用し、ネストすることができます (カーネルポリシ言語はpostfix又は逆ポーランド表記が使用されることに注意してください）。文法は以下のようになります、丸括弧は文法の一部になります:
+
+expr_set = (name ... | expr ...)
+expr = (expr_key expr_set ...)
+expr_key = and | or | xor | not | all | eq | neq | dom | domby | incomp | range
+expr 中の expr_set'の数はステートメントタイプに依存し (四つの異なるクラスが以下のように定義されています）、有効なexpr_key エントリに影響を与えます (例えば dom, domby, incomp は制限ステートメント中でのみ許可されます)。
+
+expr_key	classpermissionset roleattributeset typeattributeset	categoryset	booleanif tunableif	constrain mlsconstrain validatetrans mlsvalidatetrans
+dom				X
+domby				X
+incomp				X
+eq			X	X
+ne			X	X
+and	X	X	X	X
+or	X	X	X	X
+not	X	X	X	X
+xor	X	X	X	
+all	X	X		
+range		X		
+例にあるように、classpermissionset, roleattributeset , typeattributeset ステートメントは allow expr_set に対して、名前と式をexpr_key の値と: and, or, xor, not, all を混在して使用することを許可します:
+
+この例では、typeattribute 識別子によって、all_fs_type_except_usermodehelper_and_proc_securityと関連付けられているfile.usermodehelper と file.proc_securityを除く、全ての fs_type type エントリを含んでいます:
+
+(typeattribute all_fs_type_except_usermodehelper_and_proc_security)
+
+(typeattributeset all_fs_type_except_usermodehelper_and_proc_security
+    (and
+        (and
+            fs_type
+            (not file.usermodehelper)
+        )
+        (not file.proc_security)
+    )
+)
+cps_1 classpermissionset 識別子は、load_policy と setenforceを除く、全てのパーミッションを含んでいます:
+
+(class security (compute_av compute_create compute_member check_context load_policy compute_relabel compute_user setenforce setbool setsecparam setcheckreqprot read_policy))
+
+(classpermission cps_1)
+
+(classpermissionset cps_1 (security (not (load_policy setenforce))))
+この例ではclasspermissionset識別子と関連したsecurity_all_permsの全てのパーミッションを含みます:
+
+(class security (compute_av compute_create compute_member check_context load_policy
+    compute_relabel compute_user setenforce setbool setsecparam setcheckreqprot
+    read_policy)
+)
+
+(classpermission security_all_perms)
+
+(classpermissionset security_all_perms (security (all)))
+例にあるように、categoryset ステートメントは expr_set に対して、名前と expr_key 値を: and, or, not, xor, all, range と伴に混在して使用することを許可します。
+
+カテゴリ式はまた、sensitivitycategory, level, levelrange ステートメント中で許可されます。
+
+例にあるように、booleanif と tunableif ステートメントは、expr_set が一つの名前、またはand, or, xor, not, eq, neqの値を持つexpr_keyによる式を許可します:
+
+(booleanif disableAudio
+    (false
+        (allow process device.audio_device (chr_file_set (rw_file_perms)))
+    )
+)
+
+(booleanif (and (not disableAudio) (not disableAudioCapture))
+    (true
+        (allow process device.audio_capture_device (chr_file_set (rw_file_perms)))
+    )
+)
+constrain, mlsconstrain, validatetrans , mlsvalidatetrans ステートメントは expr_set た一つの名前又はand, or, not, all, eq, neq, dom, domby, incompの値を持つexpr_keyの式を許可します。expr_key が dom, domby 又は incompの時は、文字から始まる値(例えば、h1, l2など)と、文字列又は名前のセットになる必要があります。続く例では、CILの制約ステートメントとポリシ言語の等価性を示しています:
+
+; Process transition:  Require equivalence unless the subject is trusted.
+(mlsconstrain (process (transition dyntransition))
+    (or (and (eq h1 h2) (eq l1 l2)) (eq t1 mlstrustedsubject)))
+
+; The equivalent policy language mlsconstrain statememt is:
+;mlsconstrain process { transition dyntransition }
+;    ((h1 eq h2 and l1 eq l2) or t1 == mlstrustedsubject);
+
+; Process read operations: No read up unless trusted.
+(mlsconstrain (process (getsched getsession getpgid getcap geta`tr ptrace share))
+    (or (dom l1 l2) (eq t1 mlstrustedsubject)))
+
+; The equivalent policy language mlsconstrain statememt is:
+;mlsconstrain process { getsched getsession getpgid getcap geta`tr ptrace share }
+;    (l1 dom l2 or t1 == mlstrustedsubject);
+名前文字列
+macro ステートメントでパラメータの文字列タイプを定義する際に使われ:
+
+(call macro1("__kmsg__"))
+
+(macro macro1 ((string ARG1))
+    (typetransition audit.process device.device chr_file ARG1 device.klog_device)
+)
+別の方法では:
+
+(call macro1("__kmsg__"))
+
+(macro macro1 ((name ARG1))
+    (typetransition audit.process device.device chr_file ARG1 device.klog_device)
+)
+self
+self キーワードはAVCルールステートメントでターゲットとして使用され、その意味は、例のようにターゲットがソースと同じになる場合です:
+
+(allow unconfined.process self (file (read write)))
+Access Vector Rules
+allow
+ソースタイプとターゲットタイプ間で、許されるアクセス権を明記します。アクセス権は、ソース・ターゲットとクラス(validatetrans 又は mlsvalidatetrans)或いはソース、ターゲットクラス、パーミッション(constrain又はmlsconstrain statements)による制約ルールによって調整されるかもしれないことに注意してください。
+
+Rule definition:
+
+(allow source_id target_id|self classpermissionset_id ...)
+Where:
+
+allow
+
+allow キーワード
+
+source_id
+
+単体の、事前に定義済みのソースのtype, typealias or typeattribute識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットのtype, typealias or typeattribute識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+classpermissionset_id
+
+単体のネームドあるいはanonymous classpermissionset あるいは単体の classmap/classmappingセット識別子。
+
+例:
+
+これらの例は allowルールの可能な置き換えを示しています:
+
+(class binder (impersonate call set_context_mgr transfer receive))
+(class property_service (set))
+(class zygote (specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo))
+
+(classpermission cps_zygote)
+(classpermissionset cps_zygote (zygote (not (specifyids))))
+
+(classmap android_classes (set_1 set_2 set_3))
+
+(classmapping android_classes set_1 (binder (all)))
+(classmapping android_classes set_1 (property_service (set)))
+(classmapping android_classes set_1 (zygote (not (specifycapabilities))))
+
+(classmapping android_classes set_2 (binder (impersonate call set_context_mgr transfer)))
+(classmapping android_classes set_2 (zygote (specifyids specifyrlimits specifycapabilities specifyinvokewith)))
+
+(classmapping android_classes set_3 cps_zygote)
+(classmapping android_classes set_3 (binder (impersonate call set_context_mgr)))
+
+(block av_rules
+    (type type_1)
+    (type type_2)
+    (type type_3)
+    (type type_4)
+    (type type_5)
+
+    (typeattribute all_types)
+    (typeattributeset all_types (all))
+
+; これらの例はネームドとanonymousのclasspermissionsetと
+; classmap/classmappingステートメントになります
+    (allow type_1 self (property_service (set)))          ; anonymous
+    (allow type_2 self (zygote (specifyids)))             ; anonymous
+    (allow type_3 self cps_zygote)                        ; named
+    (allow type_4 self (android_classes (set_3)))         ; classmap/classmapping
+    (allow all_types all_types (android_classes (set_2))) ; classmap/classmapping
+
+;; このルールは--disable-neverallowが指定されている場合にはfailします。
+;    (neverallow type_5 all_types (property_service (set)))
+    (allow type_5 type_5 (property_service (set)))
+    (allow type_1 all_types (property_service (set)))
+)
+auditallow
+有効なallowルールがあった場合には、アクセス権を監査します。注意: これはアクセス権を許可するわけではなく、イベントを監査するだけです。
+
+Rule definition:
+
+(auditallow source_id target_id|self classpermissionset_id ...)
+Where:
+
+auditallow
+
+auditallow キーワード。
+
+source_id
+
+単体の、事前に定義済みのソースの type, typealias 又は typeattribute 識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットの type, typealias 又は typeattribute 識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+classpermissionset_id
+
+単体のネームドあるいはanonymous classpermissionset あるいは単体の classmap/classmapping セット識別子。
+
+例:
+
+この例は監査イベントを関係する allow ルールが与えた、指定されたパーミッションが発生した際には何時でも、ログを取得します:
+
+(allow release_app.process secmark_demo.browser_packet (packet (send recv append bind)))
+
+(auditallow release_app.process secmark_demo.browser_packet (packet (send recv)))
+dontaudit
+有効なallowルールがあった場合に、アクセス権を監査しません。これは既知のイベントに対して不要なログを止めるためのものです。
+
+これらのルールはCILコンパイラのコマンドラインで-D 又は --disable-dontauditフラグでオミット出来ることに注意してください。
+
+Rule definition:
+
+(dontaudit source_id target_id|self classpermissionset_id ...)
+Where:
+
+dontaudit
+
+dontaudit キーワード
+
+source_id
+
+単体の、事前に定義済みのソースの type, typealias 又は typeattribute 識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットの type, typealias 又は typeattribute 識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+classpermissionset_id
+
+単体のネームドあるいはanonymous classpermissionset あるいは単体のclassmap/classmapping 識別子。
+
+例:
+
+この例では、拒否されたアクセスは監査されません:
+
+(dontaudit zygote.process self (capability (fsetid)))
+neverallow
+Never allow アクセス権の定義。これはコンパイラに対して、問題を起こしているルールが修正されるまで、コンパイルをストップすることを強制します。
+
+これらのルールはCILコンパイラのコマンドラインでパラメータ-N又は--disable-neverallowフラグにより上書きすることが出来ます。
+
+Rule definition:
+
+(neverallow source_id target_id|self classpermissionset_id ...)
+Where:
+
+neverallow
+
+neverallow キーワード。
+
+source_id
+
+単体の、事前に定義済みのソースの type, typealias 又は typeattribute 識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットの type, typealias 又は typeattribute 識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+classpermissionset_id
+
+単体のネームドあるいはanonymous classpermissionset あるいは単体の classmap/classmapping セット識別子。
+
+例:
+
+この例ではtype_3がallow ルールでソースタイプとして許可されていないため、コンパイル出来ません:
+
+(class property_service (set))
+
+(block av_rules
+    (type type_1)
+    (type type_2)
+    (type type_3)
+    (typeattribute all_types)
+    (typeattributeset all_types ((all)))
+
+    (neverallow type_3 all_types (property_service (set)))
+    ; This rule will fail compilation:
+    (allow type_3 self (property_service (set)))
+)
+allowx
+ソースタイプとターゲットタイプ間で、許されるアクセス権を拡張権限を用いて明記します。allow ステートメントと異なり、ステートメント validatetrans, mlsvalidatetrans, constrain, mlsconstrain は allowxによって与えられたアクセス権を制限しません。
+
+Rule definition:
+
+(allowx source_id target_id|self permissionx_id)
+Where:
+
+allowx
+
+allowx キーワード。
+
+source_id
+
+単体の、事前に定義済みのソースの type, typealias, 又は typeattribute 識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットの type, typealias,又は typeattribute 識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+permissionx_id
+
+単体のネームドあるいはanonymous permissionx。
+
+例:
+
+これらの例はallowxルールの可能な置き換えを示しています:
+
+(allowx type_1 type_2 (ioctl tcp_socket (range 0x2000 0x20FF)))
+
+(permissionx ioctl_nodebug (ioctl udp_socket (not (range 0x4000 0x4010))))
+(allowx type_3 type_4 ioctl_nodebug)
+auditallowx
+有効なallowx ルールがあった場合には、アクセス権を監査します。注意: これはアクセス>権を許可するわけではなく、イベントを監査するだけです。
+
+Rule definition:
+
+(auditallowx source_id target_id|self permissionx_id)
+Where:
+
+auditallowx
+
+auditallowxキーワード
+
+source_id
+
+単体の、事前に定義済みのソースの type, typealias 又は typeattribute 識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットの type, typealias 又は typeattribute 識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+permissionx_id
+
+単体のネームドあるいはanonymous permissionx。
+
+例:
+
+この例は監査イベントを関係する allowx ルールが与えた、指定された拡張パーミッションが発生した際には何時でも、ログを取得します:
+
+(allowx type_1 type_2 (ioctl tcp_socket (range 0x2000 0x20FF)))
+
+(auditallowx type_1 type_2 (ioctl tcp_socket (range 0x2005 0x2010)))
+dontauditx
+有効なallowルールがあった場合に、アクセス権を監査しません。これは既知のイベントに対して不要なログを止めるためのものです。
+
+これらのルールはCILコンパイラのコマンドラインで-D 又は --disable-dontauditフラグでオミット出来ることに注意してください。
+
+Rule definition:
+
+(dontauditx source_id target_id|self permissionx_id)
+Where:
+
+dontauditx
+
+dontauditx キーワード。
+
+source_id
+
+単体の、事前に定義済みのソースの type, typealias 又は typeattribute 識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットの type, typealias 又は typeattribute 識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+permissionx_id
+
+単体のネームドあるいはanonymous permissionx。
+
+例:
+
+この例では、拒否されたアクセスは監査されません:
+
+(dontauditx type_1 type_2 (ioctl tcp_socket (range 0x3000 0x30FF)))
+neverallowx
+Never allow アクセス権は拡張権限のために定義されています。これはコンパイラに対して、問題を起こしているルールが修正されるまで、コンパイルをストップすることを強制します。
+
+これらのルールはCILコンパイラのコマンドラインでパラメータ-N又は--disable-neverallowフラグにより上書きすることが出来ます。
+
+Rule definition:
+
+(neverallowx source_id target_id|self permissionx_id)
+Where:
+
+neverallows
+
+neverallowx キーワード。
+
+source_id
+
+単体の、事前に定義済みのソースの type, typealias 又は typeattribute 識別子。
+
+target_id
+
+単体の、事前に定義済みのターゲットの type, typealias 又は typeattribute 識別子。
+
+ソースとターゲットが同じ場合には self キーワードが使用されるかもしれません。
+
+permissionx_id
+
+単体のネームドあるいはanonymous permissionx。
+
+例:
+
+この例ではtype_3が allowx ルールでソースタイプとioctlの範囲として許可されていないため、コンパイルできません:
+
+(class property_service (ioctl))
+(block av_rules
+    (type type_1)
+    (type type_2)
+    (type type_3)
+    (typeattribute all_types)
+    (typeattributeset all_types ((all)))
+    (neverallowx type_3 all_types (ioctl property_service (range 0x2000 0x20FF)))
+    ; This rule will fail compilation:
+    (allowx type_3 self (ioctl property_service (0x20A0)))
+)
+Call / Macro Statements
+call
+現在のネームスペース内の macro をインスタンス化します。ゼロ以上のパラメータがマクロにパスされます (ゼロパラメータでは blockinherit (call) / blockabstract (macro) ステートメントに似ています)。
+
+それぞれのパラメータは macro によって解決される引数を含んでパスされ、これらはネームド又はanonymous ですがパラメータタイプが macro ステートメントで定義されている必要があります。
+
+Statement definition:
+
+(call macro_id [(param ...)])
+Where:
+
+call
+
+call キーワード。
+
+macro_id
+
+インスタンス化される macro の識別子。
+
+param
+
+マクロにパスされるゼロ以上のパラメータ
+
+例:
+
+例として macro ステートメントを参照してください。
+
+macro
+現在のネームスペースでマクロを関連付けられたパラメータと一緒に宣言します。マクロ識別子は call ステートメントにより、マクロをインスタンス化する際とパラメータを解決する際に使われます。call ステートメントがマクロ内に入るかもしれません。
+
+マクロを解決する際に呼び出しているネームスペースはチェックされず、以下の場所が解決のために使われることに注意してください:
+
+マクロ内で定義されたアイテム
+
+マクロに引数としてパスされたアイテム
+
+マクロと同じネームスペースで定義されたアイテム
+
+グローバルネームスペースで定義されたアイテム
+
+Statement definition:
+
+(macro macro_id ([(param_type param_id) ...])
+    cil_statements
+    ...
+)
+Where:
+
+macro
+
+macro キーワード。
+
+macro_id
+
+macro 識別子。
+
+param_type
+
+ゼロ以上のマクロにパスされるパラメータ。 param_type は宣言のタイプ (例えば、type, class, categoryset) を決定するために使われます。
+
+有効な param_type エントリのリストは: type, typealias, role, user, sensitivity, sensitivityalias, category, categoryalias, categoryset (named or anonymous), level (named or anonymous), levelrange (named or anonymous), class, classpermission (named or anonymous), ipaddr (named or anonymous), block, name (a string), classmap
+
+param_id
+
+パラメータ識別子はマクロのボディのエントリ (例えば、ARG1) を参照する際に使われます。
+
+cil_statement
+
+ゼロ以上の有効なCIL ステートメント。
+
+例:
+
+この例では binder_call マクロを呼び出しているネームスペース (my_domain) でインスタンス化し、 ARG1 を appdomain に置き換えるか又は ARG2 を binderservicedomain に置き換えます:
+
+(block my_domain
+    (call binder_call (appdomain binderservicedomain))
+)
+
+(macro binder_call ((type ARG1) (type ARG2))
+    (allow ARG1 ARG2 (binder (call transfer)))
+    (allow ARG2 ARG1 (binder (transfer)))
+    (allow ARG1 ARG2 (fd (use)))
+)
+この例ではパラメータをマクロにパスしませんが、現在のネームスペースに type 識別子を加えます:
+
+(block unconfined
+    (call add_type)
+    ....
+
+    (macro add_type ()
+        (type exec)
+    )
+)
+この例では anonymous とネームドのIP アドレスをマクロにパスします:
+
+(ipaddr netmask_1 255.255.255.0)
+(context netlabel_1 (system.user object_r unconfined.object low_low)
+
+(call build_nodecon ((192.168.1.64) netmask_1))
+
+(macro build_nodecon ((ipaddr ARG1) (ipaddr ARG2))
+    (nodecon ARG1 ARG2  netlabel_1)
+)
+クラスとパーミッションステートメント
+common
+一つ以上のclass 識別子で使用できる一般的なアクセス権のセットで現在の名前空間内の共通の識別子を宣言します。 classcommon ステートメントはcommon 識別子を特定の class 識別子に関連付けるために使用されます。
+
+Statement definition:
+
+(common common_id (permission_id ...))
+Where:
+
+common
+
+common キーワード。
+
+common_id
+
+common 識別子。
+
+permission_id
+
+一つ以上のパーミッション。
+
+例:
+
+このcommonステートメントは common 識別子 'file'をパーミッションリストに関連付けます:
+
+(common file (ioctl read write create getattr setattr lock relabelfrom relabelto append unlink link rename execute swapon quotaon mounton))
+classcommon
+class 識別子を一つ以上の common 識別子により宣言されたパーミッションに関連付けます。
+
+Statement definition:
+
+(classcommon class_id common_id)
+Where:
+
+classcommon
+
+classcommon キーワード。
+
+class_id
+
+単体の、事前に定義済みの class 識別子。
+
+common_id
+
+単体の、事前に定義済みの、クラスに対する共通のパーミッションを定義する common 識別子。
+
+例:
+
+これはdirクラスを file common 識別子で宣言されているパーミッションリストに関連付けています:
+
+(common file (ioctl read write create getattr setattr lock relabelfrom relabelto append unlink link rename execute swapon quotaon mounton))
+
+(classcommon dir file)
+class
+クラスとゼロ以上のパーミッションを現在のネームスペースで宣言します。
+
+Statement definition:
+
+(class class_id (permission_id ...))
+Where:
+
+class
+
+class キーワード。
+
+class_id
+
+class 識別子。
+
+permission_id
+
+クラスのために宣言されたゼロ以上のパーミッション。パーミッションがゼロなら、例のように空のリストが必要なことに注意してください。
+
+例:
+
+この例では bider クラス識別子のためのパーミッションセットが定義されています:
+
+(class binder (impersonate call set_context_mgr transfer receive))
+この例では sem クラスで使われるための共通のパーミッションセットが定義されており、(class sem ()) はパーミッションを持っていません(すなわち、空のリスト):
+
+(common ipc (create destroy getattr setattr read write associate unix_read unix_write))
+
+(classcommon sem ipc)
+(class sem ())
+そしてこれは sem クラス識別子のためのパーミッションセットが指定されている状態になります:
+
+(class sem (create destroy getattr setattr read write associate unix_read unix_write))
+この例では、common, classcommon, class ステートメントの組み合わせにより:
+
+(common file (ioctl read write create getattr setattr lock relabelfrom relabelto append unlink link rename execute swapon quotaon mounton))
+
+(classcommon dir file)
+(class dir (add_name remove_name reparent search rmdir open audit_access execmod))
+これにより dir クラス識別子のパーミッションセットは次のようになります:
+
+(class dir (add_name remove_name reparent search rmdir open audit_access execmod ioctl read write create getattr setattr lock relabelfrom relabelto append unlink link rename execute swapon quotaon mounton))
+classorder
+class 達の順序を定義します。これは強制的なステートメントです。ポリしないで宣言されている複数の classorder ステートメントが順序リストを作成します。
+
+Statement definition:
+
+(classorder (class_id ...))
+Where:
+
+classorder
+
+classorder キーワード。
+
+class_id
+
+一つ以上のclass 識別子。
+
+例:
+
+これは "file dir process" の順序リストを提供します。
+
+(class process)
+(class file)
+(class dir)
+(classorder (file dir))
+(classorder (dir process))
+Unordered Classorder Statement:
+
+もしユーザが既存の classorder の知識がない場合に、unordered キーワードを classorder ステートメントの中で使うことが出来ます。unorderedステートメント中の classes が既存の classorderに付け加わります。orderedステートメント中のクラスは常に、unorderedステートメント中の再宣言したクラスに優先します。unordered キーワードは classorder リスト中の最初のアイテムである必要があります。
+
+例:
+
+これは "file dir foo a bar baz" のunorderedリストを提供します。
+
+(class file)
+(class dir)
+(class foo)
+(class bar)
+(class baz)
+(class a)
+(classorder (file dir))
+(classorder (dir foo))
+(classorder (unordered a))
+(classorder (unordered bar foo baz))
+classpermission
+現在のネームスペースでclasspermission set識別子の宣言をし、一つ以上の classpermissionset によって、ネームドセットの形式に、一つ以上のクラスとパーミッションとに関連付けるために使われます。
+
+Statement definition:
+
+(classpermission classpermissionset_id)
+Where:
+
+classpermission
+
+classpermission キーワード。
+
+classpermissionset_id
+
+classpermissionset 識別子。
+
+例:
+
+例として classpermissionset ステートメントを参照してください。
+
+classpermissionset
+現在のネームスペースでクラスパーミッションセット識別子を定義し、一つ以上のクラスやパーミッションをネームドセットの形式に関連付けます。例にあるように、必要なパーミッションセットを決定するために、ネストされた式が使われます。Anonymous classpermissionset がAVルールと制約内で使われるかもしれません。
+
+Statement definition:
+
+(classpermissionset classpermissionset_id (class_id (permission_id | expr ...)))
+Where:
+
+classpermissionset
+
+classpermissionset キーワード。
+
+classpermissionset_id
+
+classpermissionset 識別子。
+
+class_id
+
+単体の、事前に定義済みの class 識別子。
+
+permission_id
+
+クラスに必要な、ゼロ以上のパーミッション。
+
+少なくとも一つ以上の permission 識別子か expr が宣言されている必要があることに注意してください。)
+
+expr
+
+ゼロ以上の expr、有効なオペレーターと文法は:
+
+(and (permission_id ...) (permission_id ...))
+
+(or (permission_id ...) (permission_id ...))
+
+(xor (permission_id ...) (permission_id ...))
+
+(not (permission_id ...))
+
+(all)
+
+例:
+
+これらのクラスパーミッションセットステートメントはカーネルポリシ言語での allow ルールとしてパーミッションセットを解決します:
+
+(class zygote (specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo))
+
+(type test_1)
+(type test_2)
+(type test_3)
+(type test_4)
+(type test_5)
+
+; NOT
+(classpermission zygote_1)
+(classpermissionset zygote_1 (zygote
+    (not
+        (specifyinvokewith specifyseinfo)
+    )
+))
+(allow unconfined.process test_1 zygote_1)
+;; allow unconfined.process test_1 : zygote { specifyids specifyrlimits specifycapabilities } ;
+
+; AND - ALL - NOT - Equiv to test_1
+(classpermission zygote_2)
+(classpermissionset zygote_2 (zygote
+    (and
+        (all)
+        (not (specifyinvokewith specifyseinfo))
+    )
+))
+(allow unconfined.process test_2 zygote_2)
+;; allow unconfined.process test_2 : zygote { specifyids specifyrlimits specifycapabilities  } ;
+
+; OR
+(classpermission zygote_3)
+(classpermissionset zygote_3 (zygote ((or (specifyinvokewith) (specifyseinfo)))))
+(allow unconfined.process test_3 zygote_3)
+;; allow unconfined.process test_3 : zygote { specifyinvokewith specifyseinfo } ;
+
+; XOR - This will not produce an allow rule as the XOR will remove all the permissions:
+(classpermission zygote_4)
+(classpermissionset zygote_4 (zygote (xor (specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo) (specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo))))
+
+; ALL
+(classpermission zygote_all_perms)
+(classpermissionset zygote_all_perms (zygote (all)))
+(allow unconfined.process test_5 zygote_all_perms)
+;; allow unconfined.process test_5 : zygote { specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo } ;
+classmap
+現在のネームスペースでclass map識別子と一つ以上のclass mapping識別子を宣言します。これは下記を許可しています:
+
+複数の classpermissionsets が classmap / classmapping 識別子のペアにリンクされる
+
+複数の class サポートされているクラスのリストのステートメントとルールに関連付けられる:
+
+typetransition typechange typemember rangetransition roletransition defaultuser defaultrole defaulttype defaultrange validatetrans mlsvalidatetrans
+
+Statement definition:
+
+(classmap classmap_id (classmapping_id ...))
+Where:
+
+classmap
+
+classmap キーワード。
+
+classmap_id
+
+classmap 識別子。
+
+classmapping_id
+
+一つ以上の classmapping 識別子。
+
+例:
+
+例として classmapping ステートメントを参照してください。
+
+classmapping
+classpermissionsets (ネームド又はanonymous) のセットを、統合された classmapping セットの形式に定義します。一般的に、複数の classmapping ステートメントに同じ classmap と classmapping 識別子で、異なる classpermissionset'の形式になっています。これは、複数のクラス / パーミッションが allow のようなルールで必要なときに有用です。
+
+Statement definition:
+
+(classmapping classmap_id classmapping_id classpermissionset_id)
+Where:
+
+classmapping
+
+classmapping キーワード。
+
+classmap_id
+
+単体の、事前に定義済みの classmap 識別子。
+
+classmapping_id
+
+classmapping 識別子。
+
+classpermissionset_id
+
+単体のネームドの classpermissionset 識別子、または単体のanonymous classpermissionset で exprを要件として用います (classpermissionset ステートメントを参照してください)。
+
+例:
+
+これらのクラスパーミッションセットステートメントはカーネルポリシ言語での allow ルールとしてパーミッションセットを解決します:
+
+(class binder (impersonate call set_context_mgr transfer receive))
+(class property_service (set))
+(class zygote (specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo))
+
+(classpermission cps_zygote)
+(classpermissionset cps_zygote (zygote (not (specifyids))))
+
+(classmap android_classes (set_1 set_2 set_3))
+
+(classmapping android_classes set_1 (binder (all)))
+(classmapping android_classes set_1 (property_service (set)))
+(classmapping android_classes set_1 (zygote (not (specifycapabilities))))
+
+(classmapping android_classes set_2 (binder (impersonate call set_context_mgr transfer)))
+(classmapping android_classes set_2 (zygote (specifyids specifyrlimits specifycapabilities specifyinvokewith)))
+
+(classmapping android_classes set_3 cps_zygote)
+(classmapping android_classes set_3 (binder (impersonate call set_context_mgr)))
+
+(block map_example
+    (type type_1)
+    (type type_2)
+    (type type_3)
+
+    (allow type_1 self (android_classes (set_1)))
+    (allow type_2 self (android_classes (set_2)))
+    (allow type_3 self (android_classes (set_3)))
+)
+
+; The above will resolve to the following AV rules:
+;; allow map_example.type_1 map_example.type_1 : binder { impersonate call set_context_mgr transfer receive } ;
+;; allow map_example.type_1 map_example.type_1 : property_service set ;
+;; allow map_example.type_1 map_example.type_1 : zygote { specifyids specifyrlimits specifyinvokewith specifyseinfo } ;
+
+;; allow map_example.type_2 map_example.type_2 : binder { impersonate call set_context_mgr transfer } ;
+;; allow map_example.type_2 map_example.type_2 : zygote { specifyids specifyrlimits specifycapabilities specifyinvokewith } ;
+
+;; allow map_example.type_3 map_example.type_3 : binder { impersonate call set_context_mgr } ;
+;; allow map_example.type_3 map_example.type_3 : zygote { specifyrlimits specifycapabilities specifyinvokewith specifyseinfo } ;
+permissionx
+allowx, auditallowx, dontauditx, neverallowx ステートメントで使用できる拡張パーミッションを定義します。
+
+Statement definition:
+
+(permissionx permissionx_id (kind class_id (permission ... | expr ...)))
+Where:
+
+permissionx
+
+permissionx キーワード。
+
+kind
+
+拡張パーミッションの値として解釈されるキーワード。下記の一つである必要がある:
+
+種類
+
+詳細
+
+ioctl
+
+ioctl値のホワイトリストを定義するパーミッション。パーミッション値は0x0000 から 0xFFFFまでの間に含まれる必要があります。
+
+class_id
+
+単体の、事前に定義済みの class 識別子。
+
+permission
+
+一つ以上の数値で、10進数、16進数の場合には先頭に0xをつけ、8進数の場合には先頭に0をつけます。値は kindをベースにして解釈されます。
+
+expr
+
+有効なオペレーターと文法による式:
+
+(range (permission ...) (permission ...))
+
+(and (permission ...) (permission ...))
+
+(or (permission ...) (permission ...))
+
+(xor (permission ...) (permission ...))
+
+(not (permission ...))
+
+(all)
+
+例:
+
+(permissionx ioctl_1 (ioctl tcp_socket (0x2000 0x3000 0x4000)))
+(permissionx ioctl_2 (ioctl tcp_socket (range 0x6000 0x60FF)))
+(permissionx ioctl_3 (ioctl tcp_socket (and (range 0x8000 0x90FF) (not (range 0x8100 0x82FF)))))
+Conditional Statements
+boolean
+現在のネームスペースで true or false のランタイムbooleanを宣言します。booleanif ステートメントはバイナリポリシファイル内にあるCILコードを含みます。
+
+Statement definition:
+
+(boolean boolean_id true|false)
+Where:
+
+boolean
+
+boolean キーワード。
+
+boolean_id
+
+boolean 識別子。
+
+true | false
+
+boolean の初期状態。これはランタイムで setsebool(8) を使って変更でき、ステータスのクエリには getsebool(8) を使います。
+
+例:
+
+booleanif ステートメントを例として参照してください。
+
+booleanif
+バイナリポリシでインスタンス化される、計算された boolean 識別子のステートのランタイム条件ステートメントを含みます。
+
+call ステートメントは booleanif 内で許可されますが、しかしながらそれらは最終的なCILポリシーに入っても入らなくても、CILステートメントのエリアを管理するために使われます。マクロの結果のコンテンツは booleanif ステートメント (すなわち allow, auditallow, dontaudit, typemember, typetransition, typechange, コンパイル時の tunableif ステートメントに制限されます))。
+
+Statement definition:
+
+(booleanif boolean_id | expr ...)
+    (true
+        cil_statements
+        ...)
+    (false
+        cil_statements
+        ...)
+)
+Where:
+
+booleanif
+
+booleanif キーワード。
+
+boolean_id
+
+単体の boolean 識別子か、一つ以上の expr のどちらかになります。
+
+expr
+
+ゼロ以上の expr、有効なオペレーターと文法は:
+
+(and (boolean_id boolean_id))
+
+(or (boolean_id boolean_id))
+
+(xor (boolean_id boolean_id))
+
+(eq (boolean_id boolean_id))
+
+(neq (boolean_id boolean_id))
+
+(not (boolean_id))
+
+true
+
+boolean が true と評価された時にインスタンス化かれる、CIL ステートメントのオプションセット。
+
+false
+
+boolean が false と評価された時にインスタンス化かれる、CIL ステートメントのオプションセット。
+
+例:
+
+二つ目の例は kernel ポリシ言語と透過になります:
+
+(boolean disableAudio false)
+
+(booleanif disableAudio
+    (false
+        (allow process mediaserver.audio_device (chr_file_set (rw_file_perms)))
+    )
+)
+
+(boolean disableAudioCapture false)
+
+;;; if(!disableAudio && !disableAudioCapture) {
+(booleanif (and (not disableAudio) (not disableAudioCapture))
+    (true
+        (allow process mediaserver.audio_capture_device (chr_file_set (rw_file_perms)))
+    )
+)
+tunable
+Tunables は boolean と似ていますが、しかしながらそれらは、（booleanがバイナリポリシに埋め込まれてランタイムで有効化・無効化が出来る一方で）最終的なコンパイルされたCILポリシに入っても入らなくても、CILステートメントのエリアを管理するために使われます。
+
+tunableはCILコンパイラコマンドラインでパラメータ -P 又は --preserve-tunables フラグによってbooleanのように取り扱えることに注意してください。
+
+Statement definition:
+
+(tunable tunable_id true|false)
+Where:
+
+tunable
+
+tunable キーワード。
+
+tunable_id
+
+tunable 識別子。
+
+true | false
+
+最初の tunable のステート。
+
+例:
+
+tunableif ステートメントを例として参照してください。
+
+tunableif
+コンパイルされた時にCILステートメントに追加されるか追加されないかの、条件文をコンパイルします。
+
+Statement definition:
+
+(tunableif tunable_id | expr ...)
+    (true
+        cil_statements
+        ...)
+    (false
+        cil_statements
+        ...)
+)
+Where:
+
+tunableif
+
+tunableif キーワード。
+
+tunable_id
+
+単体の tunable 識別子か、又は一つ以上の expr。
+
+expr
+
+ゼロ以上の expr、有効なオペレーターと文法は:
+
+(and (tunable_id tunable_id))
+
+(or (tunable_id tunable_id))
+
+(xor (tunable_id tunable_id))
+
+(eq (tunable_id tunable_id))
+
+(neq (tunable_id tunable_id))
+
+(not (tunable_id))
+
+true
+
+tunable が true と評価された時にインスタンス化かれる、CIL ステートメントのオプションセット。
+
+false
+
+tunable が false と評価された時にインスタンス化かれる、CIL ステートメントのオプションセット。
+
+例:
+
+この例では、range 遷移ルールはバイナリポリシに追加されません:
+
+(tunable range_trans_rule false)
+
+(block init
+    (class process (process))
+    (type process)
+
+    (tunableif range_trans_rule
+        (true
+            (rangetransition process sshd.exec process low_high)
+        )
+    ) ; End tunableif
+) ; End block
+制約ステートメント
+constrain
+ソースとターゲットのセキュリティコンテキストコンポーネントによって指定されたオブジェクトクラスのパーミッションにおいて制約を有効にします。
+
+Statement definition:
+
+(constrain classpermissionset_id ... expression | expr ...)
+Where:
+
+constrain
+
+constrainキーワード。
+
+classpermissionset_id
+
+単体のネームド又はanonymous classpermissionset 又は単体のセットの classmap/classmapping 識別子。
+
+expression
+
+一つの制約 expression 又は一つ以上の exprがある必要があります。式は一つのオペレーターと2つのオペランドで次のように構成されています:
+
+(op u1 u2)
+
+(role_op r1 r2)
+
+(op t1 t2)
+
+(op u1 user_id)
+
+(op u2 user_id)
+
+(op r1 role_id)
+
+(op r2 role_id)
+
+(op t1 type_id)
+
+(op t2 type_id)
+
+where:
+
+u1, r1, t1 = Source context: user, role 又は type
+
+u2, r2, t2 = Target context: user, role 又は type
+
+and:
+
+op : eq neq
+
+role_op : eq neq dom domby incomp
+
+user_id : 単体の user 又は userattribute 識別子。
+
+role_id : 単体の role 又は roleattribute 識別子。
+
+type_id : 単体の type, typealias 又は typeattribute 識別子。
+
+expr
+
+ゼロ以上の expr, 有効なオペレーターと文法は:
+
+(and expression expression)
+
+(or expression expression)
+
+(not expression)
+
+例:
+
+2つの制約ステートメントがkernelポリシ言語ステートメントと等しく見えます:
+
+;; constrain { file } { write }
+;;    (( t1 == unconfined.process  ) and ( t2 == unconfined.object  ) or ( r1 eq r2 ));
+(constrain (file (write))
+    (or
+        (and
+            (eq t1 unconfined.process)
+            (eq t2 unconfined.object)
+        )
+        (eq r1 r2)
+    )
+)
+
+;; constrain { file } { read }
+;;    (not( t1 == unconfined.process  ) and ( t2 == unconfined.object  ) or ( r1 eq r2 ));
+(constrain (file (read))
+    (not
+        (or
+            (and
+                (eq t1 unconfined.process)
+                (eq t2 unconfined.object)
+            )
+            (eq r1 r2)
+        )
+    )
+)
+validatetrans
+validatetrans ステートメントは、オブジェクトのセキュリティコンテキストを古いものから、新しく現在のプロセスのセキュリティコンテキストに変更する能力を制御するために使われている、オブジェクトクラスと関係する file のために使われます。
+
+Statement definition:
+
+(validatetrans class_id expression | expr ...)
+Where:
+
+validatetrans
+
+validatetrans キーワード。
+
+class_id
+
+単体の、事前に宣言されている class 又は classmap 識別子。
+
+expression
+
+少なくともひとつの expression 又は一つ以上の exprが必要です。 式は一つのオペレーターと二つのオペランドで以下のように構成されています:
+
+(op u1 u2)
+
+(role_op r1 r2)
+
+(op t1 t2)
+
+(op u1 user_id)
+
+(op u2 user_id)
+
+(op u3 user_id)
+
+(op r1 role_id)
+
+(op r2 role_id)
+
+(op r3 role_id)
+
+(op t1 type_id)
+
+(op t2 type_id)
+
+(op t3 type_id)
+
+where:
+
+u1, r1, t1 = Old context: user, role 又は type
+
+u2, r2, t2 = New context: user, role 又は type
+
+u3, r3, t3 = Process context: user, role 又は type
+
+and:
+
+op : eq neq
+
+role_op : eq neq dom domby incomp
+
+user_id : 単体の user 又は userattribute 識別子
+
+role_id : 単体の role 又は roleattribute 識別子。
+
+type_id : 単体の type, typealias 又は typeattribute 識別子。
+
+expr
+
+ゼロ以上の expr, 有効なオペレーターと文法は:
+
+(and expression expression)
+
+(or expression expression)
+
+(not expression)
+
+例:
+
+カーネルポリシ言語ステートメントと同等の、validate 遷移ステートメントは:
+
+; validatetrans { file } ( t1 == unconfined.process  );
+
+(validatetrans file (eq t1 unconfined.process))
+mlsconstrain
+ソースとターゲットのセキュリティコンテキストコンポーネントによって指定されたオブジェクトクラスのパーミッションにおいてMLS制約を有効にします。
+
+Statement definition:
+
+(mlsconstrain classpermissionset_id ... expression | expr ...)
+Where:
+
+mlsconstrain
+
+mlsconstrain キーワード。
+
+classpermissionset_id
+
+単体のネームド又はanonymous classpermissionset 又は単体のセットの classmap/classmapping 識別子。
+
+expression
+
+一つの制約 expression 又は一つ以上の expr。式は一つのオペレーターと2つのオペランドで次のように構成されています:
+
+(op u1 u2)
+
+(mls_role_op r1 r2)
+
+(op t1 t2)
+
+(mls_role_op l1 l2)
+
+(mls_role_op l1 h2)
+
+(mls_role_op h1 l2)
+
+(mls_role_op h1 h2)
+
+(mls_role_op l1 h1)
+
+(mls_role_op l2 h2)
+
+(op u1 user_id)
+
+(op u2 user_id)
+
+(op r1 role_id)
+
+(op r2 role_id)
+
+(op t1 type_id)
+
+(op t2 type_id)
+
+where:
+
+u1, r1, t1, l1, h1 = Source context: user, role, type, low level 又は high level
+
+u2, r2, t2, l2, h2 = Target context: user, role, type, low level 又は high level
+
+and:
+
+op : eq neq
+
+mls_role_op : eq neq dom domby incomp
+
+user_id : 単体の user 又は userattribute 識別子。
+
+role_id : 単体の role 又は roleattribute 識別子。
+
+type_id : 単体の type, typealias 又は typeattribute 識別子。
+
+expr
+
+ゼロ以上の expr, 有効なオペレーターと文法は:
+
+(and expression expression)
+
+(or expression expression)
+
+(not expression)
+
+例:
+
+MLS制約ステートメントがkernelポリシ言語ステートメントと等しく見えます:
+
+;; mlsconstrain { file } { open }
+;;     (( l1 eq l2 ) and ( u1 == u2 ) or ( r1 != r2 ));
+
+(mlsconstrain (file (open))
+    (or
+        (and
+            (eq l1 l2)
+            (eq u1 u2)
+        )
+        (neq r1 r2)
+    )
+)
+mlsvalidatetrans
+mlsvalidatetrans ステートメントはオブジェクトのセキュリティコンテキストを古いものから、新しく現在のプロセスのセキュリティコンテキストに変更する能力を制御するために使われている、オブジェクトクラスと関係する file のために使われます。
+
+Statement definition:
+
+(mlsvalidatetrans class_id expression | expr ...)
+Where:
+
+mlsvalidatetrans
+
+mlsvalidatetrans キーワード。
+
+class_id
+
+単体の、事前に宣言されている class 又は classmap 識別子。
+
+expression
+
+少なくとも一つの expression 又は一つ以上の exprが必要です。式は一つのオペレーターと二つのオペランドで以下のように構成されています:
+
+(op u1 u2)
+
+(mls_role_op r1 r2)
+
+(op t1 t2)
+
+(mls_role_op l1 l2)
+
+(mls_role_op l1 h2)
+
+(mls_role_op h1 l2)
+
+(mls_role_op h1 h2)
+
+(mls_role_op l1 h1)
+
+(mls_role_op l2 h2)
+
+(op u1 user_id)
+
+(op u2 user_id)
+
+(op u3 user_id)
+
+(op r1 role_id)
+
+(op r2 role_id)
+
+(op r3 role_id)
+
+(op t1 type_id)
+
+(op t2 type_id)
+
+(op t3 type_id)
+
+where:
+
+u1, r1, t1, l1, h1 = Source context: user, role, type, low level 又は high level
+
+u2, r2, t2, l2, h2 = Target context: user, role, type, low level 又は high level
+
+u3, r3, t3 = Process context: user, role or type
+
+and:
+
+op : eq neq
+
+mls_role_op : eq neq dom domby incomp
+
+user_id : 単体の user 又は userattribute 識別子。
+
+role_id : 単体の role 又は roleattribute 識別子。
+
+type_id : 単体の type, typealias 又は typeattribute 識別子。
+
+expr
+
+ゼロ以上の expr, 有効なオペレーターと文法は:
+
+(and expression expression)
+
+(or expression expression)
+
+(not expression)
+
+例:
+
+kernelポリシ言語と等しいMLS validate 遷移ステートメントは:
+
+;; mlsvalidatetrans { file } ( l1 domby h2 );
+
+(mlsvalidatetrans file (domby l1 h2))
+コンテナ　ステートメント
+block
+任意のCILステートメントが有効な所で新しいネームスペースを開始します。
+
+Statement definition:
+
+(block block_id
+    cil_statement
+    ...
+)
+Where:
+
+block
+
+block キーワード。
+
+block_id
+
+ネームスペース識別子。
+
+cil_statement
+
+ゼロ以上の有効なCILステートメント。
+
+例:
+
+blockinherit ステートメントを例として参照してください。
+
+blockabstract
+ネームスペースを 'template' として宣言し、他の blockinherit ステートメントを持つネームスペースがインスタンス化されるまでコードを生成しません。
+
+Statement definition:
+
+(block block_id
+    (blockabstract template_id)
+    cil_statement
+    ...
+)
+Where:
+
+block
+
+block キーワード。
+
+block_id
+
+ネームスペース識別子。
+
+blockabstract
+
+blockabstract キーワード。
+
+template_id
+
+abstract ネームスペース識別子。これは block_id エントリとマッチする必要があります。
+
+cil_statement
+
+ゼロ以上のabstract blockで構成されているCILステートメント。
+
+例:
+
+blockinherit ステートメントを例として参照してください。
+
+blockinherit
+共通のポリシルールを、 blockabstract ステートメント用いて定義されたテンプレートを通して現在のネームスペースに加える際に使われます。全ての blockinherit ステートメントは最初に解決され、blockのコンテンツはコピーされます。これは過去に継承されたblockは継承されていかないためです。具体的な例として、例:のセクションを参照してください。
+
+Statement definition:
+
+(block block_id
+    (blockinherit template_id)
+    cil_statement
+    ...
+)
+Where:
+
+block
+
+block キーワード。
+
+block_id
+
+ネームスペース識別子。
+
+blockinherit
+
+blockinherit キーワード。
+
+template_id
+
+継承されたネームスペース識別子。
+
+cil_statement
+
+ゼロ以上の有効なCILステートメント。
+
+例:
+
+この例では二つのブロック (netserver_app and netclient_app) でインスタンス化されたテンプレート client_server を含んでいます:
+
+; This is the template block:
+(block client_server
+    (blockabstract client_server)
+
+    ; Log file labeling
+    (type log_file)
+    (typeattributeset file_type (log_file))
+    (typeattributeset data_file_type (log_file))
+    (allow process log_file (dir (write search create setattr add_name)))
+    (allow process log_file (file (create open append getattr setattr)))
+    (roletype object_r log_file)
+    (context log_file_context (u object_r log_file low_low))
+
+    ; Process labeling
+    (type process)
+    (typeattributeset domain (process))
+    (call app_domain (process))
+    (call net_domain (process))
+)
+
+; This is a policy block that will inherit the abstract block above:
+(block netclient_app
+    ; Add common policy rules to namespace:
+    (blockinherit client_server)
+    ; Label the log files
+    (filecon "/data/data/com.se4android.netclient/.*" file log_file_context)
+)
+
+; This is another policy block that will inherit the abstract block above:
+(block netserver_app
+   ; Add common policy rules to namespace:
+    (blockinherit client_server)
+
+    ; Label the log files
+    (filecon "/data/data/com.se4android.netserver/.*" file log_file_context)
+)
+
+; This is an example of how blockinherits resolve inherits before copying
+(block a
+    (type one))
+
+(block b
+    ; Notice that block a is declared here as well
+    (block a
+        (type two)))
+
+; This will first copy the contents of block b, which results in type b.a.two being copied.
+; Next, the contents of block a will be copied which will result in type a.one.
+(block ab
+    (blockinherit b)
+    (blockinherit a))
+optional
+optional ネームスペースを宣言します。 optional blockにある全てのCILステートメントは、バイナリポリシでインスタンス化される前に成立されている必要があります。tunableif と macro ステートメントはoptional コンテナに入ることは許可されていません。同じ制限が、カーネルポリシステートメントに対して適用される optional の中で、CILポリシステートメントと伴に適用されます。すなわち、以下のテーブル内のポリシステートメントのみが有効になります:
+
+allow	allowx	auditallow	auditallowx
+booleanif	dontaudit	dontauditx	typepermissive
+rangetransition	role	roleallow	roleattribute
+roletransition	type	typealias	typeattribute
+typechange	typemember	typetransition	
+Statement definition:
+
+(optional optional_id
+    cil_statement
+    ...
+)
+Where:
+
+optional
+
+optional キーワード。
+
+optional_id
+
+optional ネームスペース識別子。
+
+cil_statement
+
+ゼロ以上のCILステートメント。
+
+例:
+
+この例では全てのoptional CIL ステートメントが解決されている、提供されているポリシ内でoptional blockの ext_gateway.move_file をインスタンス化します:
+
+(block ext_gateway
+    ......
+    (optional move_file
+        (typetransition process msg_filter.move_file.in_queue file msg_filter.move_file.in_file)
+        (allow process msg_filter.move_file.in_queue (dir (read getattr write search add_name)))
+        (allow process msg_filter.move_file.in_file (file (write create getattr)))
+        (allow msg_filter.move_file.in_file unconfined.object (filesystem (associate)))
+        (typetransition msg_filter.int_gateway.process msg_filter.move_file.out_queue file
+            msg_filter.move_file.out_file)
+        (allow msg_filter.int_gateway.process msg_filter.move_file.out_queue (dir (read write search)))
+        (allow msg_filter.int_gateway.process msg_filter.move_file.out_file (file (read getattr unlink)))
+    ) ; End optional block
+
+    .....
+) ; End block
+in
+CILステートメントをネームドのコンテナ (block, optional 又は macro)内に挿入することを許可します。このステートメントは booleanif 又は tunableif ステートメント内では許可されていません。
+
+Statement definition:
+
+(in container_id
+    cil_statement
+    ...
+)
+Where:
+
+in
+
+in キーワード。
+
+container_id
+
+有効な block, optional 又は macro ネームスペース識別子。
+
+cil_statement
+
+ゼロ以上のCILステートメント。
+
+例:
+
+これは system_serverと名前付けられたコンテナにルールを加えます:
+
+(in system_server
+    (dontaudit process secmark_demo.dns_packet (packet (send recv)))
+    (allow process secmark_demo.dns_packet (packet (send recv)))
+)
+Context Statement
+コンテキストは事前に宣言されているパラメータを用いて、ネームドとanonymousで形作られています:
+
+ネームド - コンテキストは、リファレンスとして使われるコンテキスト識別子によって宣言されています。
+
+Anonymous - CIL ラベリングステートメントとしてuser, role などの識別子を用いて定義されています。
+
+それぞれのタイプを例として参照してください。
+
+context
+ラベリングのためにSELinuxのセキュリティコンテキストを宣言します。範囲 (又は現在のクリアランスレベル) はMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+Statement definition:
+
+(context context_id (user_id role_id type_id levelrange_id)))
+Where:
+
+context
+
+context キーワード。
+
+context_id
+
+context 識別子。
+
+user_id
+
+単体の、事前に宣言されている user 識別子。
+
+role_id
+
+単体の、事前に宣言されている role 識別子。
+
+type_id
+
+A single previously declared type or typealias identifier.
+
+levelrange_id
+
+単体の、事前に宣言されている levelrange 識別子。 このエントリは Multi-Level Security Labeling Statements で議論してきたのと例で示しているように、 anonymous 又はネームドの level, sensitivity, sensitivityalias, category, categoryalias 又は categoryset で定義されています。
+
+例:
+
+この例でネームドコンテキストの定義を使います:
+
+(context runas_exec_context (u object_r exec low_low))
+
+(filecon "/system/bin/run-as" file runas_exec_context)
+to resolve/build a file_contexts entry of (assuming MLS enabled policy):
+
+/system/bin/run-as  -- u:object_r:runas.exec:s0-s0
+この例では、二つの portcon ステートメントで指定されている、事前に宣言されている user role type levelrange 識別子のanonymous コンテキストを使います。
+
+(portcon udp 1024 (test.user object_r test.process ((s0) (s1))))
+(portcon tcp 1024 (test.user object_r test.process (system_low system_high)))
+この例では、 netifcon ステートメントの最初で anonymous コンテキストを使い、ふたつ目にネームドコンテキストを使います:
+
+(context netif_context (test.user object_r test.process ((s0 (c0)) (s1 (c0)))))
+
+(netifcon eth04 (test.user object_r test.process ((s0 (c0)) (s1 (c0)))) netif_context)
+Default Object Statements
+これらのルールは、新しいオブジェクトのコンテキストを計算する際に使われる、デフォルトのユーザ、ロール、タイプと(又は)範囲を許可します。これらには、ポリシバージョン27又は28で、カーネルが3.5以上が必要となります。
+
+defaultuser
+オブジェクト class 識別子のための新しいコンテキストを計算する際に、ソース又はターゲットのコンテキストからとってつける際に使われるデフォルトのユーザになります。ポリシバージョン27が必要となります。
+
+Statement definition:
+
+(defaultuser class_id default)
+Where:
+
+defaultuser
+
+defaultuser キーワード。
+
+class_id
+
+単体の、事前に宣言されている class 又は classmap 識別子、又は事前に宣言されている class 又は classmap 識別子の、括弧で閉じられたリスト。
+
+default
+
+source 又は target のキーワード。
+
+例:
+
+新しい binder, property_service, zygote , memprotect オブジェクトを作る際に、新しいセキュリティコンテキストの user コンポーネントがソースのコンテキストから付けられます:
+
+(class binder (impersonate call set_context_mgr transfer receive))
+(class property_service (set))
+(class zygote (specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo))
+(class memprotect (mmap_zero))
+
+(classmap android_classes (android))
+(classmapping android_classes android (binder (all)))
+(classmapping android_classes android (property_service (set)))
+(classmapping android_classes android (zygote (not (specifycapabilities))))
+
+(defaultuser (android_classes memprotect) source)
+
+; Will produce the following in the binary policy file:
+;; default_user binder source;
+;; default_user zygote source;
+;; default_user property_service source;
+;; default_user memprotect source;
+defaultrole
+オブジェクト class 識別子のための新しいコンテキストを計算する際に、ソース又はターゲットのコンテキストからとってつける際に使われるデフォルトのロールになります。ポリシバージョン27が必要となります。
+
+(defaultrole class_id default)
+Where:
+
+defaultrole
+
+defaultrole キーワード。
+
+class_id
+
+単体の、事前に宣言されている class 又は classmap 識別子、又は事前に宣言されている class 又は classmap 識別子の括弧で閉じられたリストになります。
+
+default
+
+source 又は target のキーワード。
+
+例:
+
+新しい binder, property_service, zygote , memprotect オブジェクトを作る際に、新しいセキュリティコンテキストの role コンポーネントがソースのコンテキストから付けられます:
+
+(class binder (impersonate call set_context_mgr transfer receive))
+(class property_service (set))
+(class zygote (specifyids specifyrlimits specifycapabilities specifyinvokewith specifyseinfo))
+
+(defaultrole (binder property_service zygote) target)
+
+; Will produce the following in the binary policy file:
+;; default_role binder target;
+;; default_role zygote target;
+;; default_role property_service target;
+defaulttype
+オブジェクト class 識別子のための新しいコンテキストを計算する際に、ソース又はターゲットのコンテキストからとってつける際に使われるデフォルトのタイプになります。ポリシバージョン28が必要となります。
+
+Statement definition:
+
+(defaulttype class_id default)
+Where:
+
+defaulttype
+
+defaulttype キーワード。
+
+class_id
+
+単体の、事前に宣言されている class 又は classmap 識別子、又は事前に宣言されている class 又は classmap 識別子の、括弧で閉じられたリスト。
+
+default
+
+source 又は target のキーワード。
+
+例:
+
+新しい socket objectを作る際に 新しいセキュリティコンテキストのコンポーネント type が source コンテキストから取られます:
+
+(defaulttype socket source)
+defaultrange
+オブジェクト class 識別子のための新しいコンテキストを計算する際に、ソース又はターゲットのコンテキストからとってつける際に使われるデフォルトのレベル又は範囲になります。ポリシバージョン27が必要となります。
+
+Statement definition:
+
+(defaultrange class_id default range)
+Where:
+
+defaultrange
+
+defaultrange キーワード。
+
+class_id
+
+単体の、事前に宣言されている class 又は classmap 識別子、又は事前に宣言されている class 又は classmap 識別子の、括弧で閉じられたリスト。
+
+default
+
+source 又は target のキーワード。
+
+range
+
+low, high 又は low-high キーワード。
+
+例:
+
+新しい file オブジェクトを作る際に、新しいセキュリティコンテキストのコンポーネントに適切な range を、target コンテキストから取ってきて付けます:
+
+(defaultrange file target low_high)
+File Labeling Statements
+filecon
+ファイルラベリングのためのエントリを定義します。コンパイラは cwd で、デフォルトで file_contexts(5) で呼ばれるファイルにあるこれらのエントリを処理します。コンパイラオプション [-f|--filecontext <filename>] は異なるパスやファイル名を指定する場合に使われます。
+
+Statement definition:
+
+(filecon "path" file_type context_id)
+Where:
+
+filecon
+
+filecon キーワード。
+
+path
+
+正規表現で形作られる、ファイルパスに相当する文字列。文字列はクォートで囲われている必要があります(例えば、 "/this/is/a/path(/.*)?") 。
+
+file_type
+
+次のように、 file_contexts ファイルに含まれる、ファイルタイプに相当する、単体のキーワード:
+
+keyword
+
+file_contexts entry
+
+file
+
+--
+
+dir
+
+-d
+
+char
+
+-c
+
+block
+
+-b
+
+socket
+
+-s
+
+pipe
+
+-p
+
+symlink
+
+-l
+
+any
+
+no entry
+
+context_id
+
+ファイルに割り当てられるセキュリティコンテキストで、おそらく次のもの:
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange), 範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+() で表される、空のコンテキストリストは、マッチングしたファイルがリラベルされないように示すために使われます。これは file_contexts(5) ファイル中で <<none>> として解釈されます。
+
+例:
+
+これらの例では一つのネームド、一つのanonymousと、一つの空のコンテキストを定義しています:
+
+(context runas_exec_context (u object_r exec low_low))
+
+(filecon "/system/bin/run-as" file runas_exec_context)
+(filecon "/dev/socket/wpa_wlan[0-9]" any u:object_r:wpa.socket:s0-s0)
+(filecon "/data/local/mine" dir ())
+(MLSが有効になったポリシと仮定した場合) file_contexts のエントリを解決/ビルドします:
+
+/system/bin/run-as  -- u:object_r:runas.exec:s0
+/dev/socket/wpa_wlan[0-9]   u:object_r:wpa.socket:s0
+/data/local/mine -d <<none>>
+fsuse
+SELinuxセキュリティコンテキストをサポートするファイルシステムでラベリングします。
+
+Statement definition:
+
+(fsuse fstype fsname context_id)
+Where:
+
+fsuse
+
+fsuse キーワード。
+
+fstype
+
+単体のキーワードで、次のようにファイルシステムのタイプに相当するもの:
+
+task - pipeやsocketなど、taskに関係したサービスをサポートするための擬似ファイルシステム。
+
+trans - 擬似ターミナルとテンポラリのオブジェクトのような、擬似ファイルシステム。
+
+xattr - ファイルシステムがサポートしている拡張属性 security.selinux。ラベリングは拡張属性をサポートしているファイルシステムで永続的に行われる。
+
+fsname
+
+サポートされているファイルシステムの名前 (例えば ext4 又は pipefs) 。
+
+context_id
+
+ネットワークインターフェースに関連付けられているセキュリティコンテキスト。
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange)、範囲はMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+context 識別子は file ネームスペースで宣言され、fsuse ステートメントはグローバルネームスペースで宣言されます:
+
+(block file
+    (type labeledfs)
+    (roletype object_r labeledfs)
+    (context labeledfs_context (u object_r labeledfs low_low))
+
+    (type pipefs)
+    (roletype object_r pipefs)
+    (context pipefs_context (u object_r pipefs low_low))
+    ...
+)
+
+(fsuse xattr ex4 file.labeledfs_context)
+(fsuse xattr btrfs file.labeledfs_context)
+
+(fsuse task pipefs file.pipefs_context)
+(fsuse task sockfs file.sockfs_context)
+
+(fsuse trans devpts file.devpts_context)
+(fsuse trans tmpfs file.tmpfs_context)
+genfscon
+セキュリティコンテキストを、fsuse ファイルラベリングオプションでサポートできないファイルシステムに関連付けるために使われます。一般的に、ファイルシステムは genfscon でroot (/) からファイルシステムの全てのファイルとディレクトリに継承されている、アサインされた、単体のデフォルトセキュリティコンテキストになっています。これの例外は /proc ファイルシステムで、ディレクトリは指定されたセキュリティコンテキストでラベリングすることが出来ます (例で見ることが出来ます）。
+
+Statement definition:
+
+(genfscon fsname path context_id)
+Where:
+
+genfscon
+
+genfscon キーワード。
+
+fsname
+
+サポートされたファイルシステム (例えば rootfs 又は proc)。
+
+path
+
+fsname が proc なら、部分的なパスになります(例を見てください)。その他のタイプではこれは '/' にならなくてはなりません。
+
+context_id
+
+context 識別子、又は anonymous セキュリティコンテキスト (user role type levelrange)、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+Examples:
+
+context 識別子は file ネームスペースで宣言され、genfscon ステートメントが in コンテナステートメントを用いて挿入されています:
+
+(file
+    (type rootfs)
+    (roletype object_r rootfs)
+    (context rootfs_context (u object_r rootfs low_low))
+
+    (type proc)
+    (roletype object_r proc)
+    (context rootfs_context (u object_r proc low_low))
+    ...
+)
+
+(in file
+    (genfscon rootfs / rootfs_context)
+    ; proc labeling can be further refined (longest matching prefix).
+    (genfscon proc / proc_context)
+    (genfscon proc /net/xt_qtaguid/ctrl qtaguid_proc_context)
+    (genfscon proc /sysrq-trigger sysrq_proc_context)
+    (genfscon selinuxfs / selinuxfs_context)
+)
+Multi-Level Security Labeling Statements
+MLSラベリングには多くのオプションがあるため、ここでの例は限られたステートメントのみです。しかし、単純なポリシが levelrange セクションで紹介されています。
+
+sensitivity
+現在のネームスペースで機密性(sensitivity)識別子を宣言します。ポリシ中の複数の sensitivity ステートメントは順序リストの形式になります。
+
+Statement definition:
+
+(sensitivity sensitivity_id)
+Where:
+
+sensitivity
+
+sensitivity キーワード。
+
+sensitivity_id
+
+sensitivity 識別子。
+
+例:
+
+この例では３つの sensitivity 識別子を宣言しています:
+
+(sensitivity s0)
+(sensitivity s1)
+(sensitivity s2)
+sensitivityalias
+現在のネームスペースで機密性のエイリアス識別子を宣言します。sensitivityaliasactual ステートメントを sensitivityalias 識別子の関連性の例として参照してください。
+
+Statement definition:
+
+(sensitivityalias sensitivityalias_id)
+Where:
+
+sensitivityalias
+
+sensitivityalias キーワード。
+
+sensitivityalias_id
+
+sensitivityalias 識別子。
+
+例:
+
+sensitivityaliasactual ステートメントを参照してください。
+
+sensitivityaliasactual
+事前に宣言されている sensitivityalias 識別子を、事前に宣言されている sensitivity 識別子と関連付けます。
+
+Statement definition:
+
+(sensitivityaliasactual sensitivityalias_id sensitivity_id)
+Where:
+
+sensitivityaliasactual
+
+sensitivityaliasactual キーワード。
+
+sensitivityalias_id
+
+単体の、事前に定義済みの sensitivityalias 識別子。
+
+sensitivity_id
+
+単体の、事前に定義済みの sensitivity 識別子。
+
+例:
+
+この例では機密性 s0 を2つのsensitivity エイリアスと関連付けています:
+
+(sensitivity s0)
+(sensitivityalias unclassified)
+(sensitivityalias SystemLow)
+(sensitivityaliasactual unclassified s0)
+(sensitivityaliasactual SystemLow s0)
+sensitivityorder
+機密性の順序を定義します - 低い方から高い方に。ポリシ中の複数の sensitivityorder ステートメントは順序リストの形式になります。
+
+Statement definition:
+
+(sensitivityorder (sensitivity_id ...))
+Where:
+
+sensitivityorder
+
+sensitivityorder キーワード。
+
+sensitivity_id
+
+一つ以上の、事前に宣言されている sensitivity 又は sensitivityalias 識別子。
+
+例:
+
+この例では2つの sensitivityorder ステートメントがコンパイルされた時に順序リスト形式になります。しかしながら、ふたつ目の sensitivityorder ステートメントは s2 から始まるため、作られた順序リストに注意してください。
+
+(sensitivity s0)
+(sensitivityalias s0 SystemLow)
+(sensitivity s1)
+(sensitivity s2)
+(sensitivityorder (SystemLow s1 s2))
+
+(sensitivity s3)
+(sensitivity s4)
+(sensitivityalias s4 SystemHigh)
+(sensitivityorder (s2 s3 SystemHigh))
+category
+現在のネームスペースでカテゴリ識別子を宣言します。ポリシ中の、複数のカテゴリステートメントが順序リストの形式になります。
+
+Statement definition:
+
+(category category_id)
+Where:
+
+category
+
+category キーワード。
+
+category_id
+
+category 識別子。
+
+例:
+
+この例では３つの category 識別子を宣言しています:
+
+(category c0)
+(category c1)
+(category c2)
+categoryalias
+現在のネームスペースでカテゴリエイリアス識別子を宣言します。categoryaliasactual ステートメントを categoryalias 識別子と関連付ける例として参照してください。
+
+Statement definition:
+
+(categoryalias categoryalias_id)
+Where:
+
+categoryalias
+
+categoryalias キーワード。
+
+categoryalias_id
+
+categoryalias 識別子。
+
+categoryaliasactual
+事前に宣言されている categoryalias 識別子を、事前に宣言されている category 識別子に関連付けます。
+
+Statement definition:
+
+(categoryaliasactual categoryalias_id category_id)
+Where:
+
+categoryaliasactual
+
+categoryaliasactual キーワード。
+
+categoryalias_id
+
+単体の、事前に定義済みの categoryalias 識別子。
+
+category_id
+
+単体の、事前に定義済みの category 識別子。
+
+例:
+
+カテゴリ c0, カテゴリエイリアス documents を宣言し、それらを関連付けます:
+
+(category c0)
+(categoryalias documents)
+(categoryaliasactual documents c0)
+categoryorder
+カテゴリの順序を定義します。ポリシ中の複数の categoryorder ステートメントは、順序リスト形式になります。このステートメントでは、カテゴリ範囲の検証を可能にするために順序付けていることに注意してください。
+
+Statement definition:
+
+(categoryorder (category_id ...))
+Where:
+
+categoryorder
+
+categoryorder キーワード。
+
+category_id
+
+一つ以上の事前に宣言されている category 又は categoryalias 識別子。
+
+例:
+
+この例では一つのカテゴリエイリアスと、9つのカテゴリを順番に並べます:
+
+(categoryorder (documents c1 c2 c3 c4 c5 c6 c7 c8 c9)
+categoryset
+現在のネームスペースで連続的、あるいは非連続のカテゴリセットの識別子を宣言します。
+
+注意:
+
+カテゴリの式は categoryset, sensitivitycategory, level, levelrange ステートメント内で許可されています。
+
+カテゴリセットは categoryorder ステートメント内では許可されていません。
+
+Statement definition:
+
+(categoryset categoryset_id (category_id ... | expr ...))
+Where:
+
+categoryset
+
+categoryset キーワード。
+
+categoryset_id
+
+categoryset 識別子。
+
+category_id
+
+ゼロ以上の事前に宣言されている category 又は categoryalias 識別子。
+
+少なくとも一つ以上の category_id 識別子又は expr パラメータが宣言されている必要があります。
+
+expr
+
+ゼロ以上の expr, 有効なオペレーターと文法:
+
+(and (category_id ...) (category_id ...))
+
+(or (category_id ...) (category_id ...))
+
+(xor (category_id ...) (category_id ...))
+
+(not (category_id ...))
+
+(range category_id category_id)
+
+(all)
+
+例:
+
+これらの例は categoryset ステートメントの一部です:
+
+; Declare categories with two alias's:
+(category c0)
+(categoryalias documents)
+(categoryaliasactual documents c0)
+(category c1)
+(category c2)
+(category c3)
+(category c4)
+(categoryalias spreadsheets)
+(categoryaliasactual spreadsheets c4)
+
+; Set the order to determine ranges:
+(categoryorder (c0 c1 c2 c3 spreadsheets))
+
+(categoryset catrange_1 (range c2 c3))
+
+; Two methods to associate all categories:
+(categoryset all_cats (range c0 c4))
+(categoryset all_cats1 (all))
+
+(categoryset catset_1 (documents c1))
+(categoryset catset_2 (c2 c3))
+(categoryset catset_3 (c4))
+
+(categoryset just_c0 (xor (c1 c2) (documents c1 c2)))
+sensitivitycategory
+sensitivity 識別子と、一つ以上の category を関連付けます。同じsensitivity に対する複数の定義は、機密性(sensivity)に対するカテゴリの順序リストの形式になります。このステートメントは、 level 識別子が宣言される前に必要となります。
+
+Statement definition:
+
+(sensitivitycategory sensitivity_id categoryset_id)
+Where:
+
+sensitivitycategory
+
+sensitivitycategory キーワード。
+
+sensitivity_id
+
+単体の、事前に定義済みの sensitivity 又は sensitivityalias 識別子。
+
+categoryset_id
+
+単体の、事前に定義済みの categoryset (ネームド又は anonymous), 又は category のリストと/又は categoryalias 識別子。例ではそれぞれのバリエーションを示しています。
+
+例:
+
+これらの sensitivitycategory の例では category, categoryalias , categorysetを使っています:
+
+(sensitivitycategory s0 catrange_1)
+(sensitivitycategory s0 catset_1)
+(sensitivitycategory s0 catset_3)
+(sensitivitycategory s0 (all))
+(sensitivitycategory unclassified (range documents c2))
+level
+現在のネームスペースで level 識別子を宣言し、事前に宣言されている sensitivity と、ゼロ以上のカテゴリを関連付けます。カテゴリが必要な時には、このステートメント以前に sensitivitycategory ステートメントが機密性とカテゴリを関連付ける必要があることに注意してください。
+
+Statement definition:
+
+level level_id (sensitivity_id [categoryset_id])
+Where:
+
+level
+
+level キーワード。
+
+level_id
+
+level 識別子。
+
+sensitivity_id
+
+単体の、事前に定義済みの sensitivity 又は sensitivityalias 識別子。
+
+categoryset_id
+
+単体の、事前に定義済みの categoryset (ネームド又は anonymous), 又は category のリストと/又は categoryalias 識別子。例ではそれぞれのバリエーションを示しています。
+
+Examples:
+
+これらの level の例では category, categoryalias , categoryset'sを使っています:
+
+(level systemLow (s0))
+(level level_1 (s0))
+(level level_2 (s0 (catrange_1)))
+(level level_3 (s0 (all_cats)))
+(level level_4 (unclassified (c2 c3 c4)))
+levelrange
+現在のネームスペースで、レベル範囲の識別子を宣言し、現在のものとクリアランスのレベルに関連付けます。
+
+Statement definition:
+
+(levelrange levelrange_id (low_level_id high_level_id))
+Where:
+
+levelrange
+
+levelrange キーワード。
+
+levelrange_id
+
+levelrange 識別子。
+
+low_level_id
+
+事前に宣言されている level 識別子により指定されている現在のレベル。これは、例で示すように、 level セクションで議論された、ネームド又はanonymousコンポーネントによって構成されています。
+
+high_level_id
+
+事前に宣言されている level 識別子により指定されたクリアランス又はハイレベル。これは、例で示すように、level セクションで議論された、ネームド又はanonymousコンポーネントによって構成されています。
+
+例:
+
+この例のポリシでは levelrange ステートメントと、このセクションで議論されている他のMLSラベリングステートメントを示しており、通常のポリシとしてコンパイルされます:
+
+(handleunknown allow)
+(mls true)
+
+; There must be least one set of SID statements in a policy:
+(sid kernel)
+(sidorder (kernel))
+(sidcontext kernel unconfined.context_1)
+
+(sensitivitycategory s0 (c4 c2 c3 c1 c0 c3))
+
+(category c0)
+(categoryalias documents)
+(categoryaliasactual documents c0)
+(category c1)
+(category c2)
+(category c3)
+(category c4)
+(categoryalias spreadsheets)
+(categoryaliasactual spreadsheets c4)
+
+(categoryorder (c0 c1 c2 c3 spreadsheets))
+
+(categoryset catrange_1 (range c2 c3))
+(categoryset all_cats (range c0 c4))
+(categoryset all_cats1 (all))
+
+(categoryset catset_1 (documents c1))
+(categoryset catset_2 (c2 c3))
+(categoryset catset_3 (c4))
+
+(categoryset just_c0 (xor (c1 c2) (documents c1 c2)))
+
+(sensitivity s0)
+(sensitivityalias unclassified)
+(sensitivityaliasactual unclassified s0)
+
+(sensitivityorder (s0))
+(sensitivitycategory s0 (c0))
+
+(sensitivitycategory s0 catrange_1)
+(sensitivitycategory s0 catset_1)
+(sensitivitycategory s0 catset_3)
+(sensitivitycategory s0 (all))
+(sensitivitycategory s0 (range documents c2))
+
+(level systemLow (s0))
+(level level_1 (s0))
+(level level_2 (s0 (catrange_1)))
+(level level_3 (s0 (all_cats)))
+(level level_4 (unclassified (c2 c3 c4)))
+
+(levelrange levelrange_2 (level_2 level_2))
+(levelrange levelrange_1 ((s0) level_2))
+(levelrange low_low (systemLow systemLow))
+
+(context context_2 (unconfined.user object_r unconfined.object (level_1 level_3)))
+
+; Define object_r role. This must be assigned in CIL.
+(role object_r)
+
+(block unconfined
+    (user user)
+    (role role)
+    (type process)
+    (type object)
+    (userrange user (systemLow systemLow))
+    (userlevel user systemLow)
+    (userrole user role)
+    (userrole user object_r)
+    (roletype role process)
+    (roletype role object)
+    (roletype object_r object)
+
+    (class file (open execute read write))
+
+    ; There must be least one allow rule in a policy:
+    (allow process self (file (read)))
+
+    (context context_1 (user object_r object low_low))
+) ; End unconfined namespace
+rangetransition
+オブジェクトレベルを他のレベルに遷移することを許可します。一般的に、プロセスが正しいMLS範囲で実行されるように、例えば init が SystemHigh で実行され、必要な初期化が正しいMLS範囲で実行されるように、保証するために使われています。
+
+Statement definition:
+
+(rangetransition source_id target_id class_id new_range_id)
+Where:
+
+rangetransition
+
+rangetransition キーワード。
+
+source_type_id
+
+単体の、事前に定義済みの type, typealias 又は typeattribute 識別子。
+
+target_type_id
+
+単体の、事前に定義済みの type, typealias 又は typeattribute 識別子。
+
+class_id
+
+単体の、事前に定義済みの class 又は classmap 識別子。
+
+new_range_id
+
+事前に宣言されている levelrange 識別子のオブジェクトクラスのための、新しいMLS範囲。このエントリはanonymous 又はネームド level, sensitivity, sensitivityalias, category, categoryalias 又は categoryset 識別子として定義されています。
+
+例:
+
+このルールではinit.processから実行される sshd.exec の範囲を s0 - s1:c0.c3 に遷移させます:
+
+(sensitivity s0)
+(sensitivity s1)
+(sensitivityorder s0 s1)
+(category c0)
+...
+(level systemlow (s0)
+(level systemhigh (s1 (c0 c1 c2)))
+(levelrange low_high (systemlow systemhigh))
+
+(rangetransition init.process sshd.exec process low_high)
+Network Labeling Statements
+ipaddr
+CIL ステートメントによって参照される可能性のある (すなわち、 netifcon 、ネームドの IPv4 又は IPv6 フォーマットのIPアドレスを宣言します。
+
+注意:
+
+CIL ステートメントでは IP アドレスがネームドのIP アドレスを使うか、又はanonymousアドレスを使えるので、例ではそれぞれのオプションを示します。
+
+IP アドレスは 括弧で囲まれたもの、例えば (127.0.0.1) 又は (::1) で事前に宣言せずに宣言されているかもしれません。
+
+Statement definition:
+
+(ipaddr ipaddr_id ip_address)
+Where:
+
+ipaddr
+
+ipaddr キーワード。
+
+ipaddr_id
+
+IP アドレス識別子。
+
+ip_address
+
+正しい書式の、IPv4 又は IPv6 のIP アドレス。
+
+例:
+
+この例ではネームドのIPアドレスを宣言し、'明白な anonymous 宣言の' IP アドレスをマクロにパスします:
+
+(ipaddr netmask_1 255.255.255.0)
+(context netlabel_1 (system.user object_r unconfined.object low_low)
+
+(call build_nodecon ((192.168.1.64) netmask_1))
+
+(macro build_nodecon ((ipaddr ARG1) (ipaddr ARG2))
+    (nodecon ARG1 ARG2  netlabel_1))
+netifcon
+ネットワークインターフェースオブジェクト(例えば、 eth0 )にラベリングをします。
+
+Statement definition:
+
+(netifcon netif_name netif_context_id packet_context_id)
+Where:
+
+netifcon
+
+netifcon キーワード。
+
+netif_name
+
+ネットワークインターフェース名 (例えば wlan0)。
+
+netif_context_id
+
+ネットワークインターフェースに関連付けられているセキュリティコンテキスト。
+
+事前に宣言されている context 識別子、又は anonymous セキュリティコンテキスト (user role type levelrange)、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+packet_context_id
+
+パケットに関連付けられたセキュリティコンテキスト。これらは定義されていますが、現在は使われておらず、 iptables(8) のSECMARKサービスがパケットにラベリングするために使われるべきなことに注意してください。
+
+事前に宣言されている context 識別子、又は anonymous セキュリティコンテキスト (user role type levelrange)、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+これらの例ではネームドと anonymous の netifcon ステートメントを示します:
+
+(context context_1 (unconfined.user object_r unconfined.object low_low))
+(context context_2 (unconfined.user object_r unconfined.object (systemlow level_2)))
+
+(netifcon eth0 context_1 (unconfined.user object_r unconfined.object levelrange_1))
+(netifcon eth1 context_1 (unconfined.user object_r unconfined.object ((s0) level_1)))
+(netifcon eth3 context_1 context_2)
+nodecon
+IPv4 又は IPv6 IP アドレスとネットワークマスクの、ネットワークアドレスオブジェクトにラベリングをします。
+
+IP アドレスは 括弧で囲まれたもの、例えば (127.0.0.1) 又は (::1) で事前に宣言せずに宣言されているかもしれません。
+
+Statement definition:
+
+(nodecon subnet_id netmask_id context_id)
+Where:
+
+nodecon
+
+nodecon キーワード。
+
+subnet_id
+
+事前に宣言されている ipaddr 識別子、又は anonymous の IPv4 又は IPv6 アドレス。
+
+netmask_id
+
+事前に宣言されている ipaddr 識別子、又は anonymous の IPv4 又は IPv6 アドレス。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange)、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+これらの例ではネームドと anonymous nodecon ステートメントについて示します:
+
+(context context_1 (unconfined.user object_r unconfined.object low_low))
+(context context_2 (unconfined.user object_r unconfined.object (systemlow level_2)))
+
+(ipaddr netmask_1 255.255.255.0)
+(ipaddr ipv4_1 192.168.1.64)
+
+(nodecon netmask_1 ipv4_1 context_2)
+(nodecon (255.255.255.0) (192.168.1.64) context_1)
+(nodecon netmask_1 (192.168.1.64) (unconfined.user object_r unconfined.object ((s0) (s0 (c0)))))
+portcon
+udp 又は tcp ポートにラベリングをします。
+
+Statement definition:
+
+(portcon protocol port|(port_low port_high) context_id)
+Where:
+
+portcon
+
+portcon キーワード。
+
+protocol
+
+プロトコルキーワードで、tcp 又は udp。
+
+port |
+
+(port_low port_high)
+
+コンテキストに関連付けられている単一のポート、又はポートの範囲。
+
+エントリは数字 [0-9] で構成されている必要があります。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange) 、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+これらの例ではネームドと anonymous portcon ステートメントについて示します:
+
+(portcon tcp 1111 (unconfined.user object_r unconfined.object ((s0) (s0 (c0)))))
+(portcon tcp 2222 (unconfined.user object_r unconfined.object levelrange_2))
+(portcon tcp 3333 (unconfined.user object_r unconfined.object levelrange_1))
+(portcon udp 4444 (unconfined.user object_r unconfined.object ((s0) level_2)))
+(portcon tcp (2000 20000) (unconfined.user object_r unconfined.object (systemlow level_3)))
+Policy Configuration Statements
+mls
+CILコンパイラによるポリシが、MLSかnon-MLSかを定義します。一つだけの mls エントリがポリシに存在する必要があり、さもないとエラーとともにコンパイラが終了します。
+
+これはCIL コンパイラのコマンドラインパラメータ -M true|false 又は --mls true|false フラグによって上書きされることに注意してください。
+
+Statement definition:
+
+(mls boolean)
+Where:
+
+mls
+
+mls キーワード。
+
+boolean
+
+true 又は false にセットします。
+
+例:
+
+(mls true)
+handleunknown
+kernelがポリシをロードする際に、unknownなオブジェクトクラスとパーミッションをどうハンドルするかを定義します。一つだけの handleunknown エントリがポリシに存在する必要があり、さもない>とエラーとともにコンパイラが終了します。
+
+これはCIL コンパイラのコマンドラインパラメータ -U 又は --handle-unknown フラグによって上書きされることに注意してください。
+
+Statement definition:
+
+(handleunknown action)
+Where:
+
+handleunknown
+
+handleunknown キーワード。
+
+action
+
+allow, deny 又は rejectになっているキーワード。kernel はキーワードを次のようにハンドルします:
+
+allow unknown class / permissions. これは返されるアクセスベクタを全て1にセットします。
+
+deny unknown class / permissions (the default). これは返されるアクセスベ>クタを全て0にセットします。
+
+reject オブジェクトクラス / パーミッションを全て含んでいない時にポリシをロードします。
+
+例:
+
+これはポリシ中のunknown クラス / パーミッションを許可します:
+
+(handleunknown allow)
+policycap
+ポリシのケーパビリティをポリシを通して有効にします。これらはグローバルネームスペースで宣言されるべきで、CIL コンパイラによってlibsepol 内で既知の有効なポリシケーパビリティである必要があります。
+
+Statement definition:
+
+(policycap policycap_id)
+Where:
+
+policycap
+
+policycap キーワード。
+
+policycap_id
+
+policycap 識別子 (例えば open_perms)。
+
+例:
+
+これらは二つの有効なポリシケーパビリティをセットします:
+
+; Enable networking controls.
+(policycap network_peer_controls)
+
+; Enable open permission check.
+(policycap open_perms)
+Role ステートメント
+role
+現在のネームスペースにrole 識別子を宣言します。
+
+Statement definition:
+
+(role role_id)
+Where:
+
+role
+
+role キーワード。
+
+role_id
+
+role 識別子。
+
+Example:
+
+この例では二つのroleを宣言しています: グローバルネームスペースの object_r と unconfined.roleです。:
+
+(role object_r)
+
+(block unconfined
+    (role role)
+)
+roletype
+role に type 識別子へのアクセスを許可します。
+
+Statement definition:
+
+(role role_id type_id)
+Where:
+
+roletype
+
+roletype キーワード。
+
+role_id
+
+単体の、事前に宣言されている role 又は roleattribute
+
+type_id
+
+単体の、事前に宣言されている type, typealias 又は typeattribute 識別子。
+
+例:
+
+この例では、 role と type 識別子を宣言し、それらを結びつけています:
+
+(block unconfined
+    (role role)
+    (type process)
+    (roletype role process)
+)
+roleattribute
+現在のネームスペースにロールアトリビュート識別子を宣言します。識別子はゼロ以上の、typeattributeset ステートメントを通して関連付けられている role と roleattribute 識別子を持っています。
+
+Statement definition:
+
+(roleattribute roleattribute_id)
+Where:
+
+roleattribute
+
+roleattribute キーワード。
+
+roleattribute_id
+
+roleattribute 識別子。
+
+例:
+
+この例では、空のセットを持つ、ロールアトリビュート roles.role_holder を宣言します:
+
+(block roles
+    (roleattribute role_holder)
+)
+roleattributeset
+一つ以上の、事前に宣言されている role 識別子を roleattribute 識別子に関連付けることを許可します。式は例に示すように関連付けを改良するために使用することができます。
+
+Statement definition:
+
+(roleattributeset roleattribute_id (role_id ... | expr ...))
+Where:
+
+roleattributeset
+
+roleattributeset キーワード。
+
+roleattribute_id
+
+単体の、事前に宣言されている roleattribute 識別子。
+
+role_id
+
+ゼロ以上の事前に宣言されている role 又は roleattribute 識別子。
+
+Note that there must be at least one少なくともひとつ以上の role_id 又は expr パラメータが宣言されている必要があることに注意してください。
+
+expr
+
+ゼロ以上の expr' で、有効なオペレーターと文法は :
+
+(and (role_id ...) (role_id ...))
+
+(or (role_id ...) (role_id ...))
+
+(xor (role_id ...) (role_id ...))
+
+(not (role_id ...))
+
+(all)
+
+例:
+
+この例では、３つのロールと２つのロールアトリビュートが宣言され、全てのロールがそれらと結び付けられています:
+
+(block roles
+    (role role_1)
+    (role role_2)
+    (role role_3)
+
+    (roleattribute role_holder)
+    (roleattributeset role_holder (role_1 role_2 role_3))
+
+    (roleattribute role_holder_all)
+    (roleattributeset role_holder_all (all))
+)
+roleallow
+現在のロールを新しいロールにすることを許可します。
+
+注意:
+
+新しいロールに遷移するときには roletransition ルールが必要になります。
+
+このルールは booleanif ステートメントの中では許可されません。
+
+Statement definition:
+
+(roleallow current_role_id new_role_id)
+Where:
+
+roleallow
+
+roleallow キーワード。
+
+current_role_id
+
+単体の、事前に宣言されている role 又は roleattribute 識別子。
+
+new_role_id
+
+単体の、事前に宣言されている role 又は roleattribute 識別子。
+
+例:
+
+roletransition ステートメントを例として参照してください。
+
+roletransition
+ターゲットのタイプのためにコンテキストを計算する際に、現在のロールから新しいロールにロールの遷移を記載します。class 識別子は通常 processですが、 カーネルバージョン 2.6.39でポリシバージョンが>= 25 以上では、任意の有効なクラスを使うことが出来ます。roleallow ルールが遷移を許可する際に使われることに注意してください。
+
+Statement definition:
+
+(roletransition current_role_id target_type_id class_id new_role_id)
+Where:
+
+roletransition
+
+roletransition キーワード。
+
+current_role_id
+
+単体の、事前に宣言されている role 又は roleattribute 識別子。
+
+target_type_id
+
+単体の、事前に宣言されている type, typealias 又は typeattribute 識別子。
+
+class_id
+
+単体の、事前に宣言されている class 又は classmap 識別子。
+
+new_role_id
+
+単体の、事前に宣言されている、遷移時にセットされる role 識別子。
+
+例:
+
+この例では、 unconfined.role が msg_filter.role ロールになり、更に遷移するのを許可しています:
+
+(block ext_gateway
+    (type process)
+    (type exec)
+
+    (roletype msg_filter.role process)
+    (roleallow unconfined.role msg_filter.role)
+    (roletransition unconfined.role exec process msg_filter.role)
+)
+rolebounds
+ロールに対して、子のロールが親よりも特権を得られないようにするような、階層的な関係を定義します。
+
+注意:
+
+親のロールを一つ以上の子供のロールにはバインド出来ません。
+
+親を一つ以上の子供にはバインド出来ません。
+
+Statement definition:
+
+(rolebounds parent_role_id child_role_id)
+Where:
+
+rolebounds
+
+rolebounds キーワード。
+
+parent_role_id
+
+単体の、事前に宣言されている role 識別子。
+
+child_role_id
+
+単体の、事前に宣言されている role 識別子。
+
+例:
+
+この例では、ロール test が unconfined.role よりも大きい特権を得る事が出来ません。:
+
+(role test)
+
+(unconfined
+    (role role)
+    (rolebounds role .test)
+)
+SID Statements
+sid
+現在のネームスペースに、新しい SID 識別子を宣言します。
+
+Statement definition:
+
+(sid sid_id)
+Where:
+
+sid
+
+sid キーワード。
+
+sid_id
+
+sid 識別子。
+
+例:
+
+この例では、3つの sid を宣言しています:
+
+(sid kernel)
+(sid security)
+(sid igmp_packet)
+sidorder
+sid の順序を定義します。これはSIDが定義されている時に、強制的なステートメントです。複数の sidorder ステートメントがポリシ中で宣言されている場合には順番のリストを形成します。
+
+Statement definition:
+
+(sidorder (sid_id ...))
+Where:
+
+sidorder
+
+sidorder キーワード。
+
+sid_id
+
+一つ以上の sid 識別子。
+
+例:
+
+ここでは "kernel security unlabeled" の順序リストを提供します。
+
+(sid kernel)
+(sid security)
+(sid unlabeled)
+(sidorder (kernel security))
+(sidorder (security unlabeled))
+sidcontext
+SELinux security context を事前に宣言されている sid 識別子に関連付けます。
+
+Statement definition:
+
+(sidcontext sid_id context_id)
+Where:
+
+sidcontext
+
+sidcontext キーワード。
+
+sid_id
+
+単体の、事前に宣言されている sid 識別子。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange) 、範囲はポ>リシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります>。
+
+例:
+
+ここでは二つのネームドセキュリティコンテキストの例と anonymous コンテキストの例を示します:
+
+; Two named context:
+(sid kernel)
+(context kernel_context (u r process low_low))
+(sidcontext kernel kernel_context)
+
+(sid security)
+(context security_context (u object_r process low_low))
+(sidcontext security security_context)
+
+; An anonymous context:
+(sid unlabeled)
+(sidcontext unlabeled (u object_r ((s0) (s0))))
+タイプステートメント
+type
+タイプ識別子を現在のネームスペースで宣言します。
+
+Statement definition:
+
+(type type_id)
+Where:
+
+type
+
+type キーワード。
+
+type_id
+
+type 識別子。
+
+例:
+
+この例ではタイプ識別子 bluetooth.process を宣言しています:
+
+(block bluetooth
+    (type process)
+)
+typealias
+現在のネームスペースでタイプのエイリアスを宣言します。
+
+Statement definition:
+
+(typealias typealias_id)
+Where:
+
+typealias
+
+typealias キーワード。
+
+typealias_id
+
+typealias 識別子。
+
+例:
+
+typealias識別子と関連付けられている、typealiasactual ステートメントをサンプルとして参照してください。
+
+typealiasactual
+先に宣言されている typealias 識別子を、先に宣言されている type 識別子と関連付けます。
+
+Statement definition:
+
+(typealiasactual typealias_id type_id)
+Where:
+
+typealiasactual
+
+typealiasactual キーワード。
+
+typealias_id
+
+単体の、事前に宣言されているtypealias 識別子。
+
+type_id
+
+単体の、事前に宣言されているtype 識別子。
+
+例:
+
+この例ではunconfined_tのエイリアス unconfined.process を現在のネームスペースで関連付けています:
+
+(typealias unconfined_t)
+(typealiasactual unconfined_t unconfined.process)
+
+(block unconfined
+    (type process)
+)
+typeattribute
+タイプのアトリビュート識別子を現在のネームスペースで宣言します。識別子はゼロ以上の type, typealias ,typeattribute 識別子で、 typeattributeset ステートメントを通して関連付けられているものです。
+
+Statement definition:
+
+(typeattribute typeattribute_id)
+Where:
+
+typeattribute
+
+typeattribute キーワード。
+
+typeattribute_id
+
+typeattribute 識別子。
+
+例:
+
+この例では空のセットのタイプアトリビュート domain をグローバルネームスペースで宣言しています:
+
+(typeattribute domain)
+typeattributeset
+一つ以上の予め宣言されている type, typealias , 又はtypeattribute 識別子を typeattribute 識別子に関連付けることを許可します。例で示すように、関連付けのために式が使われるかもしれません。
+
+Statement definition:
+
+(typeattributeset typeattribute_id (type_id ... | expr ...))
+Where:
+
+typeattributeset
+
+typeattributeset キーワード。
+
+typeattribute_id
+
+単体の、予め宣言されている typeattribute 識別子。
+
+type_id
+
+ゼロ以上の予め宣言されている type, typealias , 又はtypeattribute 識別子。
+
+少なくとも一つ以上の type_id 又は expr パラメータが宣言されていなくてはならない事に注意してください。
+
+expr
+
+ゼロ以上のexpr、有効なオペレーターと文法は:
+
+(and (type_id ...) (type_id ...))
+
+(or (type_id ...) (type_id ...))
+
+(xor (type_id ...) (type_id ...))
+
+(not (type_id ...))
+
+(all)
+
+例:
+
+この例では全てのポリシタイプと appdomainで除外されたものが対象となる。これはカーネルポリシ言語で ~appdomainと等価になる。
+
+(typeattribute not_in_appdomain)
+
+(typeattributeset not_in_appdomain (not (appdomain)))
+この例はカーネルポリシ言語での{ domain -kernel.process -ueventd.process -init.process } と等価になる:
+
+(typeattribute na_kernel_or_ueventd_or_init_in_domain)
+
+(typeattributeset na_kernel_or_ueventd_or_init_in_domain
+    (and
+        (and
+            (and
+                (domain)
+                (not (kernel.process))
+            )
+            (not (ueventd.process))
+        )
+        (not (init.process))
+    )
+)
+typebounds
+これはドメインに対して、境界ドメインは親の境界ドメインが持っている以上のパーミッションを持つことが出来ないという、階層的な関係性を定義します。
+
+マルチスレッドアプリケーションに置いて、スレッドに関係づけられたセキュリティコンテキストによる制御を行うには、2.6.28以上のカーネルが必要になります。allow ルールが境界に権限を与えるために使われる事に注意してください。
+
+Statement definition:
+
+(typebounds parent_type_id child_type_id)
+Where:
+
+typebounds
+
+typebounds キーワード。
+
+parent_type_id
+
+単体の、事前に宣言されている親ドメインの type 又は typealias 識別子。
+
+child_type_id
+
+単体の、事前に宣言されている境界(子)ドメインの type 又は typealias 識別子。
+
+例:
+
+この例では、httpd.child.process が、親のhttpd.processが権原が足りないため、file (write) を持つことが出来ません。これは小ドメインの権限が、常に親の権限と同等か下回る事を示しています:
+
+(class file (getattr read write))
+
+(block httpd
+    (type process)
+    (type object)
+
+    (typebounds process child.process)
+    ; The parent is allowed file 'getattr' and 'read':
+    (allow process object (file (getattr read)))
+
+    (block child
+        (type process)
+        (type object)
+
+        ; However the child process has been given 'write' access that will be denied.
+        (allow process httpd.object (file (read write)))
+    )
+)
+typechange
+typechangeルールはユーザスペースのSELinux対応アプリケーションのためにオブジェクトで異なるラベルを定義する際に使われます。これらのアプリケーションは、ポリシ中で新しく適用されるコンテキストを宣言するために、 security_compute_relabel(3) と typechange ルールを使います。 allow ルールが変更の認証のために使われることに注意してください。
+
+Statement definition:
+
+(typechange source_type_id target_type_id class_id change_type_id)
+Where:
+
+typechange
+
+typechange キーワード。
+
+source_type_id
+
+単体の、予め宣言されている type, typealias 又は typeattribute 識別子。
+
+target_type_id
+
+単体の、予め宣言されている type, typealias 又は typeattribute 識別子。
+
+class_id
+
+単体の、予め宣言されている class 又は classmap 識別子。
+
+change_type_id
+
+単体の、予め宣言されている、新しいタイプになる type 又は typealias 識別子。
+
+例:
+
+security_compute_relabel(3) が呼ばれるときは常に下記のパラメータが続く:
+
+scon=unconfined.object tcon=unconfined.object class=file
+
+この関数は下記のコンテキストを返す:
+
+unconfined.object:object_r:unconfined.change_label:s0
+
+(class file (getattr read write))
+
+(block unconfined
+    (type process)
+    (type object)
+    (type change_label)
+
+    (typechange object object file change_label)
+)
+typemember
+typememberルールはSELinux対応アプリケーションの、オブジェクトのラベルのために、新しいpolyinstantiatedラベルが定義される際に使われます。 これらのアプリケーションは使います。avc_compute_member(3) 又は security_compute_member(3) を、適用されるコンテキストをポリシ中で宣言する typemember ルールとともに使います。アプリケーションは必要なpolyinstantiationを全て管理できます。allow ルールはメンバーシップを許可することために使われることに注意してください。
+
+Statement definition:
+
+(typemember source_type_id target_type_id class_id member_type_id)
+Where:
+
+typemember
+
+typemember キーワード。
+
+source_type_id
+
+単体の、予め宣言されている type, typealias 又は typeattribute 識別子。
+
+target_type_id
+
+単体の、予め宣言されている type, typealias 又は typeattribute 識別子。
+
+class_id
+
+単体の、予め宣言されている class 又は classmap 識別子。
+
+member_type_id
+
+単体の、予め宣言されている、新しいメンバータイプになる type 又は typealias 識別子。
+
+例:
+
+avc_compute_member(3) 又は security_compute_member(3) は常に、次のパラメータとともに呼ばれます:
+
+scon=unconfined.object tcon=unconfined.object class=file
+
+関数は次のコンテキストを返します:
+
+unconfined.object:object_r:unconfined.member_label:s0
+
+(class file (getattr read write))
+
+(block unconfined
+    (type process)
+    (type object)
+    (type change_label)
+
+    (typemember object object file member_label)
+)
+typetransition
+typetransition ルールは、ドメイン遷移が要求された時に、 source_type とtarget_type 間のラベリングとオブジェクト生成を指定します。2.6.39カーネルでポリシバージョン25以上では、 'name transition' ルールをサポートしていますが、これは内部に条件節を許可しておらず、現在ファイルクラスのみしかサポートしていません。allow ルールは遷移を許可するために使われることに注意してください。
+
+Statement definition:
+
+(typetransition source_type_id target_type_id class_id [object_name] default_type_id)
+Where:
+
+typetransition
+
+typetransition キーワード。
+
+source_type_id
+
+単体の、予め宣言されている type, typealias 又は typeattribute 識別子。
+
+target_type_id
+
+単体の、予め宣言されている type, typealias 又は typeattribute 識別子。
+
+class_id
+
+単体の、予め宣言されている class 又は classmap 識別子。
+
+object_name
+
+'name transition' ルールのためのオプションの文字列で、オブジェクト名がダブルクォートで囲われている。この文字列はオブジェクト名と (もしパスが最後のコンポーネントのパスの場合に) マッチする。文字列が完全にマッチした場合、default_type_id は新しいタイプとなる。
+
+default_type_id
+
+単体の、予め宣言されている、新しいタイプになる type 又は typealias 識別子。
+
+例:
+
+この例では、allow ルールをサポートするプロセス遷移ルールを示しています:
+
+(macro domain_auto_trans ((type ARG1) (type ARG2) (type ARG3))
+    ; Allow the necessary permissions.
+    (call domain_trans (ARG1 ARG2 ARG3))
+    ; Make the transition occur by default.
+    (typetransition ARG1 ARG2 process ARG3)
+)
+この例では、 allow ルールをサポートする、ファイルオブジェクト遷移ルールを示しています:
+
+(macro tmpfs_domain ((type ARG1))
+    (type tmpfs)
+    (typeattributeset file_type (tmpfs))
+    (typetransition ARG1 file.tmpfs file tmpfs)
+    (allow ARG1 tmpfs (file (read write execute execmod)))
+)
+この例では、allow ルールをサポートする 'name transition' ルールを示しています:
+
+(macro write_klog ((type ARG1))
+    (typetransition ARG1 device.device chr_file "__kmsg__" device.klog_device)
+    (allow ARG1 device.klog_device (chr_file (create open write unlink)))
+    (allow ARG1 device.device (dir (write add_name remove_name)))
+)
+typepermissive
+ポリシデータベースver.23から、全てのSELinuxドメインをパーミッシブモード (ver.23以前ではこのオプションしかありません) にする代わりに、名前付けられたドメインをパーミッシブモードで実行する、パーミッシブステートメントが導入されました。パーミッシブステートメントは、ポリシが拒否している際のためのソースコンテキストのテストのためだけに使われることに注意してください。
+
+Statement definition:
+
+(typepermissive source_type_id)
+Where:
+
+typepermissive
+
+typepermissive キーワード。
+
+source_type_id
+
+単体の、予め宣言されている type 又は typealias 識別子。
+
+例:
+
+この例では、SELinuxでenforcingモードが有効になっている際に、 healthd.process ドメインがパーミッシブモードで動作することを許可しています:
+
+(block healthd
+    (type process)
+    (typepermissive process)
+
+    (allow ...)
+)
+ユーザ ステートメント
+user
+SELinuxユーザ識別子を現在のネームスペースで宣言します。
+
+Statement definition:
+
+(user user_id)
+Where:
+
+user
+
+user キーワード。
+
+user_id
+
+SELinux user 識別子。
+
+例:
+
+ここではSELinux ユーザを unconfined.user として宣言します:
+
+(block unconfined
+    (user user)
+)
+userrole
+事前に宣言されている user 識別子を、事前に宣言されている role 識別子に関連付けます。
+
+Statement definition:
+
+(userrole user_id role_id)
+Where:
+
+userrole
+
+userrole キーワード。
+
+user_id
+
+事前に宣言されている SELinux user 又は userattribute 識別子。
+
+role_id
+
+事前に宣言されている role 又は roleattribute 識別子。
+
+例:
+
+この例では、unconfined.user を unconfined.role と関連付けています:
+
+(block unconfined
+    (user user)
+    (role role)
+    (userrole user role)
+)
+userattribute
+user アトリビュートを現在のネームスペースで宣言します。識別子はゼロ以上の user と userattribute 識別子で、userattributeset ステートメントを通じて関連付けられています。
+
+Statement definition:
+
+(userattribute userattribute_id)
+Where:
+
+userattribute
+
+userattribute キーワード。
+
+userattribute_id
+
+userattribute 識別子。
+
+例:
+
+この例では、空のセットのuser アトリビュート users.user_holder を宣言しています:
+
+(block users
+    (userattribute user_holder)
+)
+userattributeset
+一つ以上の、事前に宣言されている user 又は userattribute 識別子を userattribute 識別子に関連付けることを許可します。式は例に示すように関連付けを改良するために使用することができます。
+
+Statement definition:
+
+(userattributeset userattribute_id (user_id ... | expr ...))
+Where:
+
+userattributeset
+
+userattributeset キーワード。
+
+userattribute_id
+
+単体の、事前に宣言されている userattribute 識別子。
+
+user_id
+
+ゼロ以上の、事前に宣言されている user 又は userattribute 識別子。
+
+少なくともひとつ以上の user_id 又は expr パラメータが宣言されている必要があることに注意してください。
+
+expr
+
+ゼロ以上の exprで、有効なオペレーターと文法は:
+
+(and (user_id ...) (user_id ...))
+
+(or (user_id ...) (user_id ...))
+
+(xor (user_id ...) (user_id ...))
+
+(not (user_id ...))
+
+(all)
+
+例:
+
+この例では、3つのユーザと2つのユーザアトリビュートを宣言し、その全てのユーザをそれらと関連付けています:
+
+(block users
+    (user user_1)
+    (user user_2)
+    (user user_3)
+
+    (userattribute user_holder)
+    (userattributeset user_holder (user_1 user_2 user_3))
+
+    (userattribute user_holder_all)
+    (userattributeset user_holder_all (all))
+)
+userlevel
+事前に宣言されている user 識別子を、事前に宣言されている level 識別子に関連付けます。level はネームド又はanonymousになります。
+
+Statement definition:
+
+(userlevel user_id level_id)
+Where:
+
+userlevel
+
+userlevel キーワード。
+
+user_id
+
+事前に宣言されている SELinux user 識別子。
+
+level_id
+
+事前に宣言されている level 識別子。これは level ステートメントで議論したように、単一の sensitivity と、ゼロ以上の混在しているネームド/anonymousの category'によって作られている。
+
+例:
+
+この例では、unconfined.user をネームドの systemlow level と関連付けます:
+
+(sensitivity s0)
+(level systemlow (s0))
+
+(block unconfined
+    (user user)
+     (userlevel user systemlow)
+    ; An anonymous example:
+    ;(userlevel user (s0))
+)
+userrange
+事前に宣言されている user 識別子を、事前に宣言されている levelrange 識別子と関連付けます。 levelrange はネームド又はanonymousになります。
+
+Statement definition:
+
+(userrange user_id levelrange_id)
+Where:
+
+userrange
+
+userrange キーワード。
+
+user_id
+
+事前に宣言されている SELinux user 識別子。
+
+levelrange_id
+
+事前に宣言されている levelrange 識別子。これは levelrange ステートメントで議論したように、例にあるようにネームド又はanonymousコンポーネントで構成されています。
+
+例:
+
+この例では、例にあるように unconfined.user をネームドの low_high の levelrange と関連付け、その他はanonymousに関連付けています:
+
+(category c0)
+(category c1)
+(categoryorder (c0 c1))
+(sensitivity s0)
+(sensitivity s1)
+(dominance (s0 s1))
+(sensitivitycategory s0 (c0 c1))
+(level systemLow (s0))
+(level systemHigh (s0 (c0 c1)))
+(levelrange low_high (systemLow systemHigh))
+
+(block unconfined
+    (user user)
+    (role role)
+    (userrole user role)
+    ; Named example:
+    (userrange user low_high)
+    ; Anonymous examples:
+    ;(userrange user (systemLow systemHigh))
+    ;(userrange user (systemLow (s0 (c0 c1))))
+    ;(userrange user ((s0) (s0 (c0 c1))))
+)
+userbounds
+ユーザを、子ユーザが親に比べてより多い特権を得られないように階層関係を定義します。
+
+注意:
+
+親を一つ以上の子供にはバインド出来ません。
+
+これがバイナリポリシに加えられている間は、SELinux カーネルサービスによってenforceにはなりません。
+
+Statement definition:
+
+(userbounds parent_user_id child_user_id)
+Where:
+
+userbounds
+
+userboundsキーワード。
+
+parent_user_id
+
+事前に宣言されている SELinux user 識別子。
+
+child_user_id
+
+事前に宣言されている SELinux user 識別子。
+
+例:
+
+ユーザ test は unconfined.user よりも大きな特権は得ることが出来ません:
+
+(user test)
+
+(unconfined
+    (user user)
+    (userbounds user .test)
+)
+userprefix
+http://selinuxproject.org/page/PolicyStoreConfigurationFiles で、 file_contexts エントリを記載するためとして述べられている、ファイルラベリングユーティリティによって置き換えられるuser prefix を宣言します。
+
+Statement definition:
+
+(userprefix user_id prefix)
+Where:
+
+userprefix
+
+userprefix キーワード。
+
+user_id
+
+事前に宣言されている SELinux user 識別子。
+
+prefix
+
+ファイルラベリングユーティリティによって使われる文字列
+
+例:
+
+この例では、 unconfined.admin ユーザをprefix "user" と関連付けています:
+
+(block unconfined
+    (user admin
+    (userprefix admin user)
+)
+selinuxuser
+GNU/Linux ユーザを事前に宣言されている user 識別子と、事前に宣言されている MLS userrangeに関連付けます。 userrange はポリシがMCS/MLSで無いときでも必要とされることに注意してください。
+
+Statement definition:
+
+(selinuxuser user_name user_id userrange_id)
+Where:
+
+selinuxuser
+
+selinuxuser キーワード。
+
+user_name
+
+GNU/Linux ユーザ名を表す文字列
+
+user_id
+
+事前に宣言されている SELinux user 識別子。
+
+userrange_id
+
+事前に宣言されている、user 識別子と関連付けられている userrange 識別子。これは userrange ステートメントの所で議論したように、例にあるようにネームド又はanonymousのコンポーネントで構成されています。
+
+例:
+
+この例では、 unconfined.admin ユーザを GNU / Linux user "admin_1" に関連付けています:
+
+(block unconfined
+    (user admin)
+    (selinuxuser admin_1 admin low_low)
+)
+selinuxuserdefault
+デフォルトの SELinux ユーザを宣言します。ひとつだけの selinuxuserdefault ステートメントがポリしないで許可されます。userrange 識別子はMCS/MLSポリシで無い時でも必要とされることに注意してください。
+
+Statement definition:
+
+(selinuxuserdefault user_id userrange_id)
+Where:
+
+selinuxuserdefault
+
+selinuxuserdefault キーワード。
+
+user_id
+
+事前に宣言されている SELinux user 識別子。
+
+userrange_id
+
+事前に宣言されている user 識別子と関連付けられている userrange 識別子。これは userrange ステートメントの所で議論したように、例にあるようにネームド又は anonymous コンポーネントで構成されています。
+
+例:
+
+この例では、 unconfined.user をデフォルトの SELinux ユーザとして定義しています:
+
+(block unconfined
+    (user user)
+    (selinuxuserdefault user low_low)
+)
+Xen Statements
+ポリシバージョン30 で devicetreecon ステートメントが導入され、44bit以上の物理アドレス空間 (32bitで4Kページ) を持つハードウェアのサポートのために、既存のI/Oメモリ範囲が64bitに拡張されました。
+
+その他の情報に関しては、 "XSM/FLASK Configuration" ドキュメントを参照してください () 。
+
+iomemcon
+i/o メモリにラベリングをします。これは単一のメモリ位置か、又は範囲になります。
+
+Statement definition:
+
+(iomemcon mem_addr|(mem_low mem_high) context_id)
+Where:
+
+iomemcon
+
+iomemcon キーワード。
+
+mem_addr |
+
+(mem_low mem_high)
+
+コンテキストを割り当てる、単一のメモリアドレス、又はアドレスの範囲。
+
+エントリは数字 [0-9] で構成されている必要があります。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange) 、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+メモリアドレス範囲 0xfebe0-0xfebff のための anonymous コンテキスト:
+
+(iomemcon (1043424 1043455) (unconfined.user object_r unconfined.object low_low))
+ioportcon
+i/o ポートにラベリングをします。これは単一のポートか、又は範囲になります。
+
+Statement definition:
+
+(ioportcon port|(port_low port_high) context_id)
+Where:
+
+ioportcon
+
+ioportcon キーワード。
+
+port |
+
+(port_low port_high)
+
+コンテキストを割り当てる、単一のポート、又はポートの範囲。
+
+エントリは数字 [0-9] で構成されている必要があります。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange) 、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+単一のポート:0xecc0 のための anonymous コンテキスト:
+
+(ioportcon 60608 (unconfined.user object_r unconfined.object low_low))
+pcidevicecon
+PCI デバイスにラベリングをします。
+
+Statement definition:
+
+(pcidevicecon device context_id)
+Where:
+
+pcidevicecon
+
+pcidevicecon キーワード。
+
+device
+
+device 番号。エントリは数字 [0-9] で構成されている必要があります。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange) 、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+PCI device アドレス 0xc800 のための anonymous コンテキスト:
+
+(pcidevicecon 51200 (unconfined.user object_r unconfined.object low_low))
+pirqcon
+割り込みレベルにラベリングをします。
+
+Statement definition:
+
+(pirqcon irq_level context_id)
+Where:
+
+pirqcon
+
+pirqcon キーワード。
+
+irq_level
+
+割り込みリクエスト番号。エントリは数字 [0-9] で構成されている必要があります。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange) 、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+IRQ 33 用の anonymous コンテキスト:
+
+(pirqcon 33 (unconfined.user object_r unconfined.object low_low))
+devicetreecon
+デバイスツリーノードにラベリングをします。
+
+Statement definition:
+
+(devicetreecon path context_id)
+Where:
+
+devicetreecon
+
+devicetreecon キーワード。
+
+path
+
+デバイスツリーパス。スペースを含む場合には "" で囲みます。
+
+context_id
+
+事前に宣言されている context 識別子又は anonymous セキュリティコンテキスト (user role type levelrange) 、範囲はポリシでMLS/MCSが有効になっていてもなっていなくても、定義されている必要があります。
+
+例:
+
+指定されたパスの anonymous コンテキスト:
+
+(devicetreecon "/this is/a/path" (unconfined.user object_r unconfined.object low_low))
+Example Policy
+(type bin_t)
+(type kernel_t)
+(type security_t)
+(type unlabeled_t)
+(handleunknown allow)
+(mls true)
+
+(policycap open_perms)
+
+(category c0)
+(category c1)
+(category c2)
+(category c3)
+(category c4)
+(category c5)
+(categoryalias cat0)
+(categoryaliasactual cat0 c0)
+(categoryset cats01 (c0 c1))
+(categoryset cats02 (c2 c3))
+(categoryset cats03 (range c0 c5))
+(categoryset cats04 (not (range c0 c2)))
+(categoryorder (cat0 c1 c2 c3))
+(categoryorder (c3 c4 c5))
+
+(sensitivity s0)
+(sensitivity s1)
+(sensitivity s2)
+(sensitivity s3)
+(sensitivityalias sens0)
+(sensitivityaliasactual sens0 s0)
+(sensitivityorder (s0 s1 s2 s3))
+
+(sensitivitycategory s0 (cats03))
+(sensitivitycategory s1 cats01)
+(sensitivitycategory s1 (c2))
+(sensitivitycategory s2 (cats01 cats02))
+(sensitivitycategory s2 (range c4 c5))
+(sensitivitycategory s3 (range c0 c5))
+
+(level low (s0))
+(level high (s3 (range c0 c3)))
+(levelrange low_high (low high))
+(levelrange lh1 ((s0 (c0)) (s2 (c0 c3))))
+(levelrange lh2 (low (s2 (c0 c3))))
+(levelrange lh3 ((s0 cats04) (s2 (range c0 c5))))
+(levelrange lh4 ((s0) (s1)))
+
+(block policy
+    (class file (execute_no_trans entrypoint execmod open audit_access a b c d e))
+    ; order should be: file char b c a dir d e f
+    (classorder (file char))
+    (classorder (unordered dir))
+    (classorder (unordered c a b d e f))
+    (classorder (char b c a))
+
+    (common file (ioctl read write create getattr setattr lock relabelfrom
+            relabelto append unlink link rename execute swapon
+            quotaon mounton))
+    (classcommon file file)
+
+    (classpermission file_rw)
+    (classpermissionset file_rw (file (read write getattr setattr lock append)))
+
+    ;;(classpermission loop1)
+    ;;(classpermissionset loop1 ((loop2)))
+    ;;(classpermission loop2)
+    ;;(classpermissionset loop2 ((loop3)))
+    ;;(classpermission loop3)
+    ;;(classpermissionset loop3 ((loop1)))
+
+    (class char (foo))
+    (classcommon char file)
+
+    (class dir ())
+    (class a ())
+    (class b ())
+    (class c ())
+    (class d ())
+    (class e ())
+    (class f ())
+    (classcommon dir file)
+
+    (classpermission char_w)
+    (classpermissionset char_w (char (write setattr)))
+    (classpermissionset char_w (file (open read getattr)))
+
+    (classmap files (read))
+    (classmapping files read
+        (file (open read getattr)))
+    (classmapping files read
+        char_w)
+
+    (type auditadm_t)
+    (type console_t)
+    (type console_device_t)
+    (type user_tty_device_t)        
+    (type device_t)
+    (type getty_t)
+    (type exec_t)
+    (type bad_t)
+
+    ;;(allow console_t console_device_t file_rw)
+    (allow console_t console_device_t (files (read)))
+
+    (permissionx ioctl_test (ioctl files (and (range 0x1600 0x19FF) (not (range 0x1750 0x175F)))))
+    (allowx console_t console_device_t ioctl_test)
+
+    (boolean secure_mode false)
+    (boolean console_login true)
+    
+    (sid kernel)
+    (sid security)
+    (sid unlabeled)
+    (sidorder (kernel security))
+    (sidorder (security unlabeled))
+        
+    (typeattribute exec_type)
+    (typeattribute foo_type)
+    (typeattribute bar_type)
+    (typeattribute baz_type)
+    (typeattribute not_bad_type)
+    (typeattributeset exec_type (or bin_t kernel_t))
+    (typeattributeset foo_type (and exec_type kernel_t))
+    (typeattributeset bar_type (xor exec_type foo_type))
+    (typeattributeset baz_type (not bin_t))
+    (typeattributeset baz_type (and exec_type (and bar_type bin_t)))
+    (typeattributeset not_bad_type (not bad_t))
+    (typealias sbin_t)
+    (typealiasactual sbin_t bin_t)
+    (typepermissive device_t) 
+    (typemember device_t bin_t file exec_t)
+    (typetransition device_t console_t files console_device_t)
+
+    (roleattribute exec_role)
+    (roleattribute foo_role)
+    (roleattribute bar_role)
+    (roleattribute baz_role)
+    (roleattribute foo_role_a)
+    (roleattributeset exec_role (or user_r system_r))
+    (roleattributeset foo_role_a (baz_r user_r system_r))
+    (roleattributeset foo_role (and exec_role system_r))
+    (roleattributeset bar_role (xor exec_role foo_role))
+    (roleattributeset baz_role (not user_r))
+
+    (rangetransition device_t console_t file low_high)
+    (rangetransition device_t kernel_t file ((s0) (s3 (not c3))))
+
+    (typetransition device_t console_t file "some_file" getty_t)
+    
+    (allow foo_type self (file (execute)))
+    (allow bin_t device_t (file (execute)))
+
+    ;; Next two rules violate the neverallow rule that follows
+    ;;(allow bad_t not_bad_type (file (execute)))
+    ;;(allow bad_t exec_t (file (execute)))
+    (neverallow bad_t not_bad_type (file (execute)))
+            
+    (booleanif secure_mode
+        (true
+            (auditallow device_t exec_t (file (read write)))
+        )
+    )
+
+    (booleanif console_login
+        (true
+            (typechange auditadm_t console_device_t file user_tty_device_t)
+            (allow getty_t console_device_t (file (getattr open read write append)))
+        )
+        (false
+            (dontaudit getty_t console_device_t (file (getattr open read write append)))
+        )
+    )
+
+    (booleanif (not (xor (eq secure_mode console_login) 
+                (and (or secure_mode console_login) secure_mode ) ) )
+        (true
+            (allow bin_t exec_t (file (execute)))
+        )
+    )
+
+    (tunable allow_execfile true)
+    (tunable allow_userexec false)
+
+    (tunableif (not (xor (eq allow_execfile allow_userexec)
+                (and (or allow_execfile allow_userexec)
+                    (and allow_execfile allow_userexec) ) ) )
+        (true
+            (allow bin_t exec_t (file (execute)))
+        )
+    )
+
+    (optional allow_rules 
+        (allow user_t exec_t (bins (execute)))
+    )
+
+    (dontaudit device_t auditadm_t (file (read)))
+    (auditallow device_t auditadm_t (file (open)))
+
+    (user system_u)
+    (user user_u)
+    (user foo_u)
+    (userprefix user_u user)
+    (userprefix system_u user)
+
+    (selinuxuser name user_u low_high)
+    (selinuxuserdefault user_u ((s0 (c0)) (s3 (range c0 c3))))
+
+    (role system_r)
+    (role user_r)
+    (role baz_r)
+
+    (roletype system_r bin_t)
+    (roletype system_r kernel_t)
+    (roletype system_r security_t)
+    (roletype system_r unlabeled_t)
+    (roletype system_r exec_type)
+    (roletype exec_role bin_t)
+    (roletype exec_role exec_type)
+    (roleallow system_r user_r)
+    (roletransition system_r bin_t file user_r)
+
+    (userrole foo_u foo_role)
+    (userlevel foo_u low)
+
+    (userattribute ua1)
+    (userattribute ua2)
+    (userattribute ua3)
+    (userattribute ua4)
+    (userattributeset ua1 (user_u system_u))
+    (userattributeset ua2 (foo_u system_u))
+    (userattributeset ua3 (and ua1 ua2))
+    (user u5)
+    (user u6)
+    (userlevel u5 low)
+    (userlevel u6 low)
+    (userrange u5 low_high)
+    (userrange u6 low_high)
+    (userattributeset ua4 (u5 u6))
+    (userrole ua4 foo_role_a)
+
+    (userrange foo_u low_high)
+
+    (userrole system_u system_r)
+    (userlevel system_u low)
+    (userrange system_u low_high)
+
+    (userrole user_u user_r)
+    (userlevel user_u (s0 (range c0 c2)))
+    (userrange user_u (low high))
+
+    (sidcontext kernel (system_u system_r kernel_t ((s0) high)))
+    (sidcontext security (system_u system_r security_t (low (s3 (range c0 c3)))))
+    (sidcontext unlabeled (system_u system_r unlabeled_t (low high)))
+
+    (context system_u_bin_t_l2h (system_u system_r bin_t (low high)))
+
+    (ipaddr ip_v4 192.25.35.200)
+    (ipaddr netmask 192.168.1.1)
+    (ipaddr ip_v6 2001:0DB8:AC10:FE01::)
+    (ipaddr netmask_v6 2001:0DE0:DA88:2222::)
+
+    (filecon "/usr/bin/foo" file system_u_bin_t_l2h)
+    (filecon "/usr/bin/bar" file (system_u system_r kernel_t (low low)))
+    (filecon "/usr/bin/baz" any ())
+    (filecon "/usr/bin/aaa" any (system_u system_r kernel_t ((s0) (s3 (range c0 c2)))))
+    (filecon "/usr/bin/bbb" any (system_u system_r kernel_t ((s0 (c0)) high)))
+    (filecon "/usr/bin/ccc" any (system_u system_r kernel_t (low (s3 (cats01)))))
+    (filecon "/usr/bin/ddd" any (system_u system_r kernel_t (low (s3 (cats01 cats02)))))
+    (nodecon ip_v4 netmask system_u_bin_t_l2h)
+    (nodecon ip_v6 netmask_v6 system_u_bin_t_l2h)
+    (portcon udp 25 system_u_bin_t_l2h)
+    (portcon tcp 22 system_u_bin_t_l2h)
+    (genfscon - "/usr/bin" system_u_bin_t_l2h)
+    (netifcon eth0 system_u_bin_t_l2h system_u_bin_t_l2h) ;different contexts?
+    (fsuse xattr ext3 system_u_bin_t_l2h)
+    
+    ; XEN
+    (pirqcon 256 system_u_bin_t_l2h)
+    (iomemcon (0 255) system_u_bin_t_l2h)
+    (ioportcon (22 22) system_u_bin_t_l2h)
+    (pcidevicecon 345 system_u_bin_t_l2h)
+    (devicetreecon "/this is/a/path" system_u_bin_t_l2h)
+
+    (constrain (files (read)) (not (or (and (eq t1 exec_t) (eq t2 bin_t)) (eq r1 r2))))
+    (constrain char_w (not (or (and (eq t1 exec_t) (eq t2 bin_t)) (eq r1 r2))))
+
+    (constrain (file (read)) (or (and (eq t1 exec_t) (neq t2 bin_t) ) (eq u1 ua4) ) )
+    (constrain (file (open)) (dom r1 r2))
+    (constrain (file (open)) (domby r1 r2))
+    (constrain (file (open)) (incomp r1 r2))
+
+    (validatetrans file (eq t1 exec_t))
+
+    (mlsconstrain (file (open)) (not (or (and (eq l1 l2) (eq u1 u2)) (eq r1 r2))))
+    (mlsconstrain (file (open)) (or (and (eq l1 l2) (eq u1 u2)) (neq r1 r2)))
+    (mlsconstrain (file (open)) (dom h1 l2))
+    (mlsconstrain (file (open)) (domby l1 h2))
+    (mlsconstrain (file (open)) (incomp l1 l2))
+
+    (mlsvalidatetrans file (domby l1 h2))
+
+    (macro test_mapping ((classpermission cps))
+           (allow bin_t auditadm_t cps))
+
+    (call test_mapping ((file (read))))
+    (call test_mapping ((files (read))))
+    (call test_mapping (char_w))
+
+    (defaultuser (file char) source)
+    (defaultrole char target)
+    (defaulttype (files) source)
+    (defaultrange (file) target low)
+    (defaultrange (char) source low-high)
+)
+
+(macro all ((type x))
+    (allow x bin_t (policy.file (execute)))
+    (allowx x bin_t (ioctl policy.file (range 0x1000 0x11FF)))
+)
+(call all (bin_t))
+
+(block z
+    (block ba
+        (roletype r t)
+        (blockabstract z.ba)))
+
+(block test_ba
+    (blockinherit z.ba)
+    (role r)
+    (type t))
+
+(block bb
+    (type t1)
+    (type t2)
+    (boolean b1 false)
+    (tunable tun1 true)
+    (macro m ((boolean b))
+        (tunableif tun1
+            (true
+                (allow t1 t2 (policy.file (write))))
+            (false
+                (allow t1 t2 (policy.file (execute)))))
+        (booleanif b
+            (true
+                (allow t1 t2 (policy.file (read))))))
+
+    (call m (b1))
+)
+
+(in bb
+    (tunableif bb.tun1
+        (true
+            (allow bb.t2 bb.t1 (policy.file (read write execute))))))
+関連コンテンツ
+SELinuxのCIL (Part1)
+SELinuxのCIL (Part2)
+SELinuxの現在の動向
