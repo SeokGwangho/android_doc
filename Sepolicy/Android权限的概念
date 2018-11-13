@@ -4,16 +4,19 @@ Android权限的概念
 --------------------
 1.权限:
 --------------------
-每个App程序在安装时,都有建立一个系统ID，如app_20，用以保护数据不被其它应用获取。Android根据不同的用户和组，分配不同权限，比如访问SD卡，访问网络等。
+每个App程序在安装时,都有建立一个系统ID，如app_20，用以保护数据不被其它应用获取.Android根据不同的用户和组，分配不同权限，比如访问SD卡，访问网络等。
+比如"gps"用户不能访问"nfc"用户的等等？
 底层映射为Linux权限。
 
 Android系统中修改了Linux的UID的含义:
 由于Android是单用户系统，不需要支持多用户登陆，因此传统的UID就失去了原来的意义。
-Android巧妙地修改了UID的含义：每个APP对应一个UID, 用UID对应用程序进行管理。
+
+Android巧妙地修改了UID的含义： 每个APP对应一个UID, 用UID对应用程序进行管理。
 
     Android中查看UID的方法：
       adb pull/data/system/packages.list
       vim packages.list
+
 --------------------
 2. 应用程序申请权限
 --------------------
@@ -21,25 +24,25 @@ Android巧妙地修改了UID的含义：每个APP对应一个UID, 用UID对应�
   默认情况下不设定特殊的权限。
   AndroidManifest加入权限后，系统安装程序时会在图形界面中提示权限。
 
-2) 如果是缺少某个权限（程序中使用的某种权限，而在AndroidManifest.xml中并未声名），程序运行时会在logcat中打印出错误信息requires <permission>
+2)如果是缺少某个权限（程序中使用的某种权限，而在AndroidManifest.xml中并未声名），程序运行时会在logcat中打印出错误信息requires <permission>
 
-3) 与某个进程使用相同的用户ID
-  应用程序可与系统中已存在的用户使用同一权限，需要在AndroidManifest.xml中设置sharedUserId。
+3)与某个进程使用相同的用户ID
+  应用程序可与【系统中已存在的用户】使用同一权限，需要在AndroidManifest.xml中设置【sharedUserId】。
   如：android:sharedUserId="android.uid.system "，
-  作用是获得系统权限，但是这样的程序属性只能在build整个系统时放进去（就是系统软件）才起作用，共享ID的程序必须是同一签名。
+  作用是:获得系统(system)权限，但是这样的程序属性,只能在编译整个系统时放进去（就是属于系统软件）才起作用。
+  共享ID的程序们必须是同一签名。
 
 4)关于应用程序共用权限的问题，在PackageManagerService.java中有相关的配置：
 
-　　　　PackageManagerService(){
-　　　　　　mSettings.addSharedUserLPw("android.uid.system",
-　　　　　　Process.SYSTEM_UID, ApplicationInfo.FLAG_SYSTEM);
-　　　　　　mSettings.addSharedUserLPw("android.uid.phone", RADIO_UID, ApplicationInfo.FLAG_SYSTEM,
-　　　　　　new int[] {UID_NET_RAW, UID_QCOM_DIAG, UID_NET_ADMIN});
-　　　　　　。。。
+　　　　PackageManagerService(){  //给app添加权限？ 待调查
+　　　　　　mSettings.addSharedUserLPw("android.uid.system", Process.SYSTEM_UID, ApplicationInfo.FLAG_SYSTEM);
+　　　　　　mSettings.addSharedUserLPw("android.uid.phone",  RADIO_UID,          ApplicationInfo.FLAG_SYSTEM, new int[] 
+                                         {UID_NET_RAW, UID_QCOM_DIAG, UID_NET_ADMIN});
+　　　　　　...
 　　　　}
     
 　　　　比如：看到PhoneApp 的AndroidManifest.xml中
-　　　　　　android:sharedUserId="android.uid.phone" 使PhoneApp具有radio权限，在访问RIL时会进行此权限检测
+　　　　　　android:sharedUserId="android.uid.phone" 使PhoneApp具有radio权限，在访问RIL时会进行此权限检测。
 
 --------------------
 3. Android权限的实现
