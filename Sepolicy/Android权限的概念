@@ -1,85 +1,74 @@
+-------------------------------------------------
 Android权限的概念
+-------------------------------------------------
+--------------------
+1.权限:
+--------------------
+每个App程序在安装时,都有建立一个系统ID，如app_20，用以保护数据不被其它应用获取。Android根据不同的用户和组，分配不同权限，比如访问SD卡，访问网络等。
+底层映射为Linux权限。
 
-1.权限
-　　每个程序在安装时都有建立一个系统ID，如app_15，用以保护数据不被其它应用获取。
-  　Android根据不同的用户和组，分配不同权限，比如访问SD卡，访问网络等等。底层映射为Linux权限。
+Android系统中修改了Linux的UID的含义:
+由于Android是单用户系统，不需要支持多用户登陆，因此传统的UID就失去了原来的意义。
+Android巧妙地修改了UID的含义：每个APP对应一个UID, 用UID对应用程序进行管理。
 
-2. 应用申请权限
-　　1)应用开发者通过AndroidManifest.xml中<uses-permission>指定对应权限，再映射到底层的用户和组，默认情况下不设定特殊的权限。AndroidManifest加入权限后系统安装程序时会在图形界面中提示权限
+    Android中查看UID的方法：
+      adb pull/data/system/packages.list
+      vim packages.list
+--------------------
+2. 应用程序申请权限
+--------------------
+1)应用开发者通过AndroidManifest.xml中<uses-permission>指定对应权限，再映射到底层的用户和组。
+  默认情况下不设定特殊的权限。
+  AndroidManifest加入权限后，系统安装程序时会在图形界面中提示权限。
 
-　　2) 如果是缺少某个权限（程序中使用的某种权限而在AndroidManifest.xml中并未声名），程序运行时会在logcat中打印出错误信息requires <permission>
+2) 如果是缺少某个权限（程序中使用的某种权限，而在AndroidManifest.xml中并未声名），程序运行时会在logcat中打印出错误信息requires <permission>
 
-　　3) 与某个进程使用相同的用户ID
+3) 与某个进程使用相同的用户ID
+  应用程序可与系统中已存在的用户使用同一权限，需要在AndroidManifest.xml中设置sharedUserId。
+  如：android:sharedUserId="android.uid.system "，
+  作用是获得系统权限，但是这样的程序属性只能在build整个系统时放进去（就是系统软件）才起作用，共享ID的程序必须是同一签名。
 
-　　　　应用程序可与系统中已存在的用户使用同一权限，需要在AndroidManifest.xml中设置sharedUserId，如android:sharedUserId="android.uid.system "，作用是获得系统权限，
-
-　　但是这样的程序属性只能在build整个系统时放进去（就是系统软件）才起作用，共享ID的程序必须是同一签名的
-
-　　4)关于应用程序共用权限的问题，在PackageManagerService.java中有相关的配置
+4)关于应用程序共用权限的问题，在PackageManagerService.java中有相关的配置：
 
 　　　　PackageManagerService(){
-
 　　　　　　mSettings.addSharedUserLPw("android.uid.system",
-
 　　　　　　Process.SYSTEM_UID, ApplicationInfo.FLAG_SYSTEM);
-
 　　　　　　mSettings.addSharedUserLPw("android.uid.phone", RADIO_UID, ApplicationInfo.FLAG_SYSTEM,
-
 　　　　　　new int[] {UID_NET_RAW, UID_QCOM_DIAG, UID_NET_ADMIN});
-
-　　　　　　……
+　　　　　　。。。
 　　　　}
-
- 
-
+    
 　　　　比如：看到PhoneApp 的AndroidManifest.xml中
+　　　　　　android:sharedUserId="android.uid.phone" 使PhoneApp具有radio权限，在访问RIL时会进行此权限检测
 
-　　　　　　android:sharedUserId="android.uid.phone" 使PhoneApp具有radio权限
-
-　　　　　　在访问RIL时会进行此权限检测
-
+--------------------
 3. Android权限的实现
-
-　　1)第一层：由应用设置，修改AndroidManifest.xml，形如：
-
-　　　　<uses-permission android:name=”android.permission.INTERNET”/>
-
-　　2)第二层：框架层，权限对应组，frameworks/base/data/etc/platform.xml，形如：
-
+--------------------
+　　1)第一层：由应用设置，修改AndroidManifest.xml，形如： 
+       <uses-permission android:name=”android.permission.INTERNET”/>
+　　
+   2)第二层：框架层，权限对应组，frameworks/base/data/etc/platform.xml，形如：
 　　　　<permission name=”android.permission.INTERNET”>
-
 　　　　　　<group gid=inet” />
-
 　　　　</permission>
 
-　　3)第三层：系统层，系统的权限，
-
+　　3)第三层：系统层，系统的权限
 　　　　system/core/include/private/android_filesystem_config.h,形如：
 
 　　　　#define AID_RADIO 1001 /* telephony subsystem, RIL */
-
 　　　　#define AID_INET 3003 //建立SOCKET的权限
-
 　　　　……
-
- 
-
 　　　　static const struct android_id_info android_ids[] = {
 
 　　　　　　{ "radio", AID_RADIO, },
-
 　　　　　　{ “inet”, AID_INET, },
-
 　　　　　　……
-
+--------------------
 4.系统权限
-
+--------------------
 　　1) 特殊权限的用户
-
 　　#define AID_ROOT 0 /* traditional unix root user */
-
 　　#define AID_SYSTEM 1000 /* system server */
-
 　　#define AID_RADIO 1001 /* telephony subsystem, RIL */
 　　#define AID_BLUETOOTH 1002 /* bluetooth subsystem */
 　　#define AID_GRAPHICS 1003 /* graphics devices */
@@ -87,25 +76,19 @@ Android权限的概念
 　　#define AID_AUDIO 1005 /* audio devices */
 　　#define AID_CAMERA 1006 /* camera devices */
 　　#define AID_LOG 1007 /* log devices */
-
 　　……
 
 　　2) 查看可用系统的权限
-
 　　　　$ adb shell
-
 　　　　# pm list permissions
-
+--------------------
 5. framework层对权限的判断
-
+--------------------
 　　1)相关源码实现
-
 　　　　frameworks/base/services/java/com/android/server/PackageManagerService.java
-
 　　　　frameworks/base/services/java/com/android/server/am/ActivityManagerService.java
 
 　　2)在系统层，如何查看某个应用的权限
-
 　　　　a)在应用进程开启时，ActivityManagerService.java会在logcat中输出该应用的权限，形如：
 
 　　　　　　I/ActivityManager(1730): Start proc com.anbdroid.phone for restart com.android.phone:pid=2605 uid=1000 gids={3002,3001,3003}
@@ -113,11 +96,7 @@ Android权限的概念
 　　　　　　即它有3001,3002,3003三个权限：访问蓝牙和建立socket
 
 　　　　b)注意：此打印输出在应用第一次启动时。如果进程已存在，需要先把对应进程杀掉，以保证该进程重新启动，才能显示
-
-　　　　c)具体实现，见：
-
+　　　　c)具体实现：
 　　　　　　framewors/base/services/java/com/android/server/am/ActivityManagerService.java
-
 　　　　　　的函数startProcessLocked()，其中取其组信息的具本语句是
-
 　　　　　　mContext.getPackageManager().getPackageGids(app.info.packageName);
