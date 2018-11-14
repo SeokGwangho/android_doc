@@ -1,0 +1,517 @@
+-----------------------------------------
+Android编译模块之_关键.mk文件
+-----------------------------------------
+编译脚本调用关系：
+1.编译环境的设置：setenv ==》 build/envsetup.sh ==》build/core/envsetup.mk 和 build/core/config.mk
+2.编译链的执行：Makefile ==》 build/core/main.mk  //最小安卓系统
+3.各个模块的所涉及的编译脚本回溯：
+                build/target/product/full.mk  <== 
+                build/target/product/generic_no_telephony.mk <==  
+                build/target/product/full_base.mk <== 
+                build/target/product/full_base_telephony.mk <==  
+                build/target/product/full.mk <==  
+                build/target/product/AndroidProducts.mk <==  
+                build/core/product.mk  <== 
+                build/core/product_config.mk <==  build/core/envsetup.mk  <== build/envsetup.sh  <==   setenv
+
+---------------------------------------------------------------------------------------------------------
+在移植和裁剪安卓系统的时候，需要添加一些app、模块和服务等东西，那么就需要找到一些关键性的mk文件进行修改。
+
+下面试着分析安卓系统哪些"mk"文件才是关键性的文件。
+
+定位关键目录：
+刚开始移植安卓的时候一直在“devices/自家产品目录/”下面修改各种".mk"文件，这样可以定制安卓一部分功能，
+其他核心功能需要在“build/target/product/”目录下修改“mk”文件。下面看看build目录下有啥东西：
+
+~/workspace/tiny4412/android-4.2.2_r1$ ls build/
+buildspec.mk.default  CleanSpec.mk  core  envsetup.sh  libs  target  tools
+
+~/workspace/tiny4412/android-4.2.2_r1$ ls build/core/
+apicheck_msg_current.txt  distdir.mk              java.mk                   process_wrapper_gdb.sh
+apicheck_msg_last.txt     droiddoc.mk             legacy_prebuilts.mk       process_wrapper.sh
+base_rules.mk             dumpvar.mk              llvm_config.mk            product_config.mk
+binary.mk                 dynamic_binary.mk       main.mk                   product.mk
+build_id.mk               envsetup.mk             Makefile                  proguard.emma.flags
+build-system.html         executable.mk           multi_prebuilt.mk         proguard.flags
+checktree                 filter_symbols.sh       native_test.mk            proguard_tests.flags
+cleanbuild.mk             find-jdk-tools-jar.sh   node_fns.mk               raw_executable.mk
+cleanspec.mk              help.mk                 notice_files.mk           raw_static_library.mk
+clear_vars.mk             host_executable.mk      package.mk                root.mk
+combo                     host_java_library.mk    pathmap.mk                shared_library.mk
+config.mk                 host_native_test.mk     pdk_config.mk             static_java_library.mk
+copy_headers.mk           host_prebuilt.mk        phony_package.mk          static_library.mk
+definitions.mk            host_shared_library.mk  post_clean.mk             tasks
+device.mk                 host_static_library.mk  prebuilt.mk               version_defaults.mk
+dex_preopt.mk             java_library.mk         process_wrapper_gdb.cmds
+
+
+~/workspace/tiny4412/android-4.2.2_r1$ ls build/target/product/
+AndroidProducts.mk           full.mk                      generic_x86.mk               sdk_mips.mk
+base.mk                      full_x86.mk                  languages_full.mk            sdk.mk
+core.mk                      generic_mips.mk              languages_small.mk           sdk_x86.mk
+full_base.mk                 generic.mk                   large_emu_hw.mk              security/
+full_base_telephony.mk       generic_no_telephony.mk      locales_full.mk              telephony.mk
+full_mips.mk                 generic_no_telephony.mk.bak  mini.mk                      vbox_x86.mk 
+
+
+编译脚本的调用关系：
+1.编译环境的设置：setenv ==》 build/envsetup.sh ==》build/core/envsetup.mk 和 build/core/config.mk
+
+==================================build/core/envsetup.mk==============================
+# Move the host or target under the debug/ directory
+# if necessary.
+TARGET_OUT_ROOT_release := $(OUT_DIR)/target
+TARGET_OUT_ROOT_debug := $(DEBUG_OUT_DIR)/target
+TARGET_OUT_ROOT := $(TARGET_OUT_ROOT_$(TARGET_BUILD_TYPE))
+
+HOST_OUT_ROOT_release := $(OUT_DIR)/host
+HOST_OUT_ROOT_debug := $(DEBUG_OUT_DIR)/host
+HOST_OUT_ROOT := $(HOST_OUT_ROOT_$(HOST_BUILD_TYPE))
+
+HOST_OUT_release := $(HOST_OUT_ROOT_release)/$(HOST_OS)-$(HOST_ARCH)
+HOST_OUT_debug := $(HOST_OUT_ROOT_debug)/$(HOST_OS)-$(HOST_ARCH)
+HOST_OUT := $(HOST_OUT_$(HOST_BUILD_TYPE))
+
+BUILD_OUT := $(OUT_DIR)/host/$(BUILD_OS)-$(BUILD_ARCH)
+
+TARGET_PRODUCT_OUT_ROOT := $(TARGET_OUT_ROOT)/product
+
+TARGET_COMMON_OUT_ROOT := $(TARGET_OUT_ROOT)/common
+HOST_COMMON_OUT_ROOT := $(HOST_OUT_ROOT)/common
+
+PRODUCT_OUT := $(TARGET_PRODUCT_OUT_ROOT)/$(TARGET_DEVICE)
+
+OUT_DOCS := $(TARGET_COMMON_OUT_ROOT)/docs
+
+BUILD_OUT_EXECUTABLES:= $(BUILD_OUT)/bin
+
+HOST_OUT_EXECUTABLES:= $(HOST_OUT)/bin
+HOST_OUT_SHARED_LIBRARIES:= $(HOST_OUT)/lib
+HOST_OUT_JAVA_LIBRARIES:= $(HOST_OUT)/framework
+HOST_OUT_SDK_ADDON := $(HOST_OUT)/sdk_addon
+
+HOST_OUT_INTERMEDIATES := $(HOST_OUT)/obj
+HOST_OUT_HEADERS:= $(HOST_OUT_INTERMEDIATES)/include
+HOST_OUT_INTERMEDIATE_LIBRARIES := $(HOST_OUT_INTERMEDIATES)/lib
+HOST_OUT_NOTICE_FILES:=$(HOST_OUT_INTERMEDIATES)/NOTICE_FILES
+HOST_OUT_COMMON_INTERMEDIATES := $(HOST_COMMON_OUT_ROOT)/obj
+
+TARGET_OUT_INTERMEDIATES := $(PRODUCT_OUT)/obj
+TARGET_OUT_HEADERS:= $(TARGET_OUT_INTERMEDIATES)/include
+TARGET_OUT_INTERMEDIATE_LIBRARIES := $(TARGET_OUT_INTERMEDIATES)/lib
+TARGET_OUT_COMMON_INTERMEDIATES := $(TARGET_COMMON_OUT_ROOT)/obj
+
+TARGET_OUT := $(PRODUCT_OUT)/$(TARGET_COPY_OUT_SYSTEM)
+TARGET_OUT_EXECUTABLES:= $(TARGET_OUT)/bin
+TARGET_OUT_OPTIONAL_EXECUTABLES:= $(TARGET_OUT)/xbin
+TARGET_OUT_SHARED_LIBRARIES:= $(TARGET_OUT)/lib
+TARGET_OUT_JAVA_LIBRARIES:= $(TARGET_OUT)/framework
+TARGET_OUT_APPS:= $(TARGET_OUT)/app
+TARGET_OUT_KEYLAYOUT := $(TARGET_OUT)/usr/keylayout
+TARGET_OUT_KEYCHARS := $(TARGET_OUT)/usr/keychars
+TARGET_OUT_ETC := $(TARGET_OUT)/etc
+TARGET_OUT_NOTICE_FILES:=$(TARGET_OUT_INTERMEDIATES)/NOTICE_FILES
+TARGET_OUT_FAKE := $(PRODUCT_OUT)/fake_packages
+
+TARGET_OUT_DATA := $(PRODUCT_OUT)/$(TARGET_COPY_OUT_DATA)
+TARGET_OUT_DATA_EXECUTABLES:= $(TARGET_OUT_EXECUTABLES)
+TARGET_OUT_DATA_SHARED_LIBRARIES:= $(TARGET_OUT_SHARED_LIBRARIES)
+TARGET_OUT_DATA_JAVA_LIBRARIES:= $(TARGET_OUT_JAVA_LIBRARIES)
+TARGET_OUT_DATA_APPS:= $(TARGET_OUT_DATA)/app
+TARGET_OUT_DATA_KEYLAYOUT := $(TARGET_OUT_KEYLAYOUT)
+TARGET_OUT_DATA_KEYCHARS := $(TARGET_OUT_KEYCHARS)
+TARGET_OUT_DATA_ETC := $(TARGET_OUT_ETC)
+TARGET_OUT_DATA_NATIVE_TESTS := $(TARGET_OUT_DATA)/nativetest
+
+TARGET_OUT_CACHE := $(PRODUCT_OUT)/cache
+
+TARGET_OUT_VENDOR := $(PRODUCT_OUT)/$(TARGET_COPY_OUT_VENDOR)
+TARGET_OUT_VENDOR_EXECUTABLES:= $(TARGET_OUT_VENDOR)/bin
+TARGET_OUT_VENDOR_OPTIONAL_EXECUTABLES:= $(TARGET_OUT_VENDOR)/xbin
+TARGET_OUT_VENDOR_SHARED_LIBRARIES:= $(TARGET_OUT_VENDOR)/lib
+TARGET_OUT_VENDOR_JAVA_LIBRARIES:= $(TARGET_OUT_VENDOR)/framework
+TARGET_OUT_VENDOR_APPS:= $(TARGET_OUT_VENDOR)/app
+TARGET_OUT_VENDOR_ETC := $(TARGET_OUT_VENDOR)/etc
+
+TARGET_OUT_UNSTRIPPED := $(PRODUCT_OUT)/symbols
+TARGET_OUT_EXECUTABLES_UNSTRIPPED := $(TARGET_OUT_UNSTRIPPED)/system/bin
+TARGET_OUT_SHARED_LIBRARIES_UNSTRIPPED := $(TARGET_OUT_UNSTRIPPED)/system/lib
+TARGET_ROOT_OUT_UNSTRIPPED := $(TARGET_OUT_UNSTRIPPED)
+TARGET_ROOT_OUT_SBIN_UNSTRIPPED := $(TARGET_OUT_UNSTRIPPED)/sbin
+TARGET_ROOT_OUT_BIN_UNSTRIPPED := $(TARGET_OUT_UNSTRIPPED)/bin
+
+TARGET_ROOT_OUT := $(PRODUCT_OUT)/$(TARGET_COPY_OUT_ROOT)
+TARGET_ROOT_OUT_BIN := $(TARGET_ROOT_OUT)/bin
+TARGET_ROOT_OUT_SBIN := $(TARGET_ROOT_OUT)/sbin
+TARGET_ROOT_OUT_ETC := $(TARGET_ROOT_OUT)/etc
+TARGET_ROOT_OUT_USR := $(TARGET_ROOT_OUT)/usr
+
+TARGET_RECOVERY_OUT := $(PRODUCT_OUT)/$(TARGET_COPY_OUT_RECOVERY)
+TARGET_RECOVERY_ROOT_OUT := $(TARGET_RECOVERY_OUT)/root
+
+TARGET_SYSLOADER_OUT := $(PRODUCT_OUT)/sysloader
+TARGET_SYSLOADER_ROOT_OUT := $(TARGET_SYSLOADER_OUT)/root
+TARGET_SYSLOADER_SYSTEM_OUT := $(TARGET_SYSLOADER_OUT)/root/system
+
+TARGET_INSTALLER_OUT := $(PRODUCT_OUT)/installer
+TARGET_INSTALLER_DATA_OUT := $(TARGET_INSTALLER_OUT)/data
+TARGET_INSTALLER_ROOT_OUT := $(TARGET_INSTALLER_OUT)/root
+TARGET_INSTALLER_SYSTEM_OUT := $(TARGET_INSTALLER_OUT)/root/system
+
+TARGET_FACTORY_RAMDISK_OUT := $(PRODUCT_OUT)/factory_ramdisk
+
+COMMON_MODULE_CLASSES := TARGET-NOTICE_FILES HOST-NOTICE_FILES HOST-JAVA_LIBRARIES
+==================================build/core/config.mk==============================
+# Standard source directories.
+SRC_DOCS:= $(TOPDIR)docs
+# TODO: Enforce some kind of layering; only add include paths
+#       when a module links against a particular library.
+# TODO: See if we can remove most of these from the global list.
+SRC_HEADERS := \
+        $(TOPDIR)system/core/include \
+        $(TOPDIR)hardware/libhardware/include \
+        $(TOPDIR)hardware/libhardware_legacy/include \
+        $(TOPDIR)hardware/ril/include \
+        $(TOPDIR)libnativehelper/include \
+        $(TOPDIR)frameworks/native/include \
+        $(TOPDIR)frameworks/native/opengl/include \
+        $(TOPDIR)frameworks/av/include \
+        $(TOPDIR)frameworks/base/include \
+        $(TOPDIR)frameworks/base/opengl/include \
+        $(TOPDIR)external/skia/include
+SRC_HOST_HEADERS:=$(TOPDIR)tools/include
+SRC_LIBRARIES:= $(TOPDIR)libs
+SRC_SERVERS:= $(TOPDIR)servers
+SRC_TARGET_DIR := $(TOPDIR)build/target
+SRC_API_DIR := $(TOPDIR)frameworks/base/api
+
+# Some specific paths to tools
+SRC_DROIDDOC_DIR := $(TOPDIR)build/tools/droiddoc
+
+# Various mappings to avoid hard-coding paths all over the place
+include $(BUILD_SYSTEM)/pathmap.mk
+
+# ###############################################################
+# Build system internal files
+# ###############################################################
+
+BUILD_COMBOS:= $(BUILD_SYSTEM)/combo
+
+CLEAR_VARS:= $(BUILD_SYSTEM)/clear_vars.mk
+BUILD_HOST_STATIC_LIBRARY:= $(BUILD_SYSTEM)/host_static_library.mk
+BUILD_HOST_SHARED_LIBRARY:= $(BUILD_SYSTEM)/host_shared_library.mk
+BUILD_STATIC_LIBRARY:= $(BUILD_SYSTEM)/static_library.mk
+BUILD_RAW_STATIC_LIBRARY := $(BUILD_SYSTEM)/raw_static_library.mk
+BUILD_SHARED_LIBRARY:= $(BUILD_SYSTEM)/shared_library.mk
+BUILD_EXECUTABLE:= $(BUILD_SYSTEM)/executable.mk
+BUILD_RAW_EXECUTABLE:= $(BUILD_SYSTEM)/raw_executable.mk
+BUILD_HOST_EXECUTABLE:= $(BUILD_SYSTEM)/host_executable.mk
+BUILD_PACKAGE:= $(BUILD_SYSTEM)/package.mk
+BUILD_PHONY_PACKAGE:= $(BUILD_SYSTEM)/phony_package.mk
+BUILD_HOST_PREBUILT:= $(BUILD_SYSTEM)/host_prebuilt.mk
+BUILD_PREBUILT:= $(BUILD_SYSTEM)/prebuilt.mk
+BUILD_MULTI_PREBUILT:= $(BUILD_SYSTEM)/multi_prebuilt.mk
+BUILD_JAVA_LIBRARY:= $(BUILD_SYSTEM)/java_library.mk
+BUILD_STATIC_JAVA_LIBRARY:= $(BUILD_SYSTEM)/static_java_library.mk
+BUILD_HOST_JAVA_LIBRARY:= $(BUILD_SYSTEM)/host_java_library.mk
+BUILD_DROIDDOC:= $(BUILD_SYSTEM)/droiddoc.mk
+BUILD_COPY_HEADERS := $(BUILD_SYSTEM)/copy_headers.mk
+BUILD_NATIVE_TEST := $(BUILD_SYSTEM)/native_test.mk
+BUILD_HOST_NATIVE_TEST := $(BUILD_SYSTEM)/host_native_test.mk
+
+-include cts/build/config.mk
+
+# ###############################################################
+# Build system internal files
+# ###############################################################
+
+BUILD_COMBOS:= $(BUILD_SYSTEM)/combo
+
+CLEAR_VARS:= $(BUILD_SYSTEM)/clear_vars.mk
+SIGNAPK_JAR := $(HOST_OUT_JAVA_LIBRARIES)/signapk$(COMMON_JAVA_PACKAGE_SUFFIX)
+MKBOOTFS := $(HOST_OUT_EXECUTABLES)/mkbootfs$(HOST_EXECUTABLE_SUFFIX)
+MINIGZIP := $(HOST_OUT_EXECUTABLES)/minigzip$(HOST_EXECUTABLE_SUFFIX)
+MKBOOTIMG := $(HOST_OUT_EXECUTABLES)/mkbootimg$(HOST_EXECUTABLE_SUFFIX)
+MKYAFFS2 := $(HOST_OUT_EXECUTABLES)/mkyaffs2image$(HOST_EXECUTABLE_SUFFIX)
+APICHECK := $(HOST_OUT_EXECUTABLES)/apicheck$(HOST_EXECUTABLE_SUFFIX)
+FS_GET_STATS := $(HOST_OUT_EXECUTABLES)/fs_get_stats$(HOST_EXECUTABLE_SUFFIX)
+MKEXT2IMG := $(HOST_OUT_EXECUTABLES)/genext2fs$(HOST_EXECUTABLE_SUFFIX)
+MAKE_EXT4FS := $(HOST_OUT_EXECUTABLES)/make_ext4fs$(HOST_EXECUTABLE_SUFFIX)
+MKEXTUSERIMG := $(HOST_OUT_EXECUTABLES)/mkuserimg.sh
+MKEXT2BOOTIMG := external/genext2fs/mkbootimg_ext2.sh
+SIMG2IMG := $(HOST_OUT_EXECUTABLES)/simg2img$(HOST_EXECUTABLE_SUFFIX)
+E2FSCK := $(HOST_OUT_EXECUTABLES)/e2fsck$(HOST_EXECUTABLE_SUFFIX)
+MKTARBALL := build/tools/mktarball.sh
+TUNE2FS := $(HOST_OUT_EXECUTABLES)/tune2fs$(HOST_EXECUTABLE_SUFFIX)
+E2FSCK := $(HOST_OUT_EXECUTABLES)/e2fsck$(HOST_EXECUTABLE_SUFFIX)
+JARJAR := $(HOST_OUT_JAVA_LIBRARIES)/jarjar.jar
+PROGUARD := external/proguard/bin/proguard.sh
+JAVATAGS := build/tools/java-event-log-tags.py
+LLVM_RS_CC := $(HOST_OUT_EXECUTABLES)/llvm-rs-cc$(HOST_EXECUTABLE_SUFFIX)
+LLVM_RS_LINK := $(HOST_OUT_EXECUTABLES)/llvm-rs-link$(HOST_EXECUTABLE_SUFFIX)
+DEXOPT := $(HOST_OUT_EXECUTABLES)/dexopt$(HOST_EXECUTABLE_SUFFIX)
+DEXPREOPT := dalvik/tools/dex-preopt
+LINT := prebuilts/sdk/tools/lint
+
+# ACP is always for the build OS, not for the host OS
+ACP := $(BUILD_OUT_EXECUTABLES)/acp$(BUILD_EXECUTABLE_SUFFIX)
+
+# dx is java behind a shell script; no .exe necessary.
+DX := $(HOST_OUT_EXECUTABLES)/dx
+ZIPALIGN := $(HOST_OUT_EXECUTABLES)/zipalign$(HOST_EXECUTABLE_SUFFIX)
+FINDBUGS := prebuilt/common/findbugs/bin/findbugs
+EMMA_JAR := external/emma/lib/emma$(COMMON_JAVA_PACKAGE_SUFFIX)
+
+
+ 
+
+
+2.编译链的执行：Makefile ==》 build/core/main.mk  //最小安卓系统
+ifeq ($(BUILD_TINY_ANDROID), true)
+
+# TINY_ANDROID is a super-minimal build configuration, handy for board
+# bringup and very low level debugging
+
+subdirs := \
+        bionic \
+        system/core \
+        system/extras/ext4_utils \
+        system/extras/su \
+        build/libs \
+        build/target \
+        build/tools/acp \full_
+        external/gcc-demangle \
+        external/mksh \
+        external/openssl \
+        external/yaffs2 \
+        external/zlib
+else    # !BUILD_TINY_ANDROID
+#
+# Typical build; include any Android.mk files we can find.
+#
+subdirs := $(TOP)
+
+3.各个模块的所涉及的编译脚本回溯：
+build/target/product/full.mk  <== 
+build/target/product/generic_no_telephony.mk <==  
+build/target/product/full_base.mk <== 
+build/target/product/full_base_telephony.mk <==  
+build/target/product/full.mk <==  
+build/target/product/AndroidProducts.mk <==  
+build/core/product.mk  <== 
+build/core/product_config.mk <==  build/core/envsetup.mk  <== build/envsetup.sh  <==   setenv
+
+其中，可裁剪部分位于
+build/target/product/generic_no_telephony.mk 和 
+build/target/product/telephony.mk
+
+===================telephony.mk====================================
+PRODUCT_PACKAGES := \
+    Mms \
+    rild
+===================== generic_no_telephony.mk ========================
+PRODUCT_PACKAGES := \
+    DeskClock \
+    Bluetooth \
+    Calculator \
+    Calendar \
+    CertInstaller \
+    DrmProvider \
+    Email2 \
+    Exchange2 \
+    FusedLocation \
+    Gallery2 \
+    InputDevices \
+    LatinIME \
+    Launcher2 \
+    Music \
+    MusicFX \
+    Provision \
+    Phone \
+    QuickSearchBox \
+    Settings \
+    SystemUI \
+    CalendarProvider \
+    bluetooth-health \
+    hostapd \
+    wpa_supplicant.conf
+
+
+PRODUCT_PACKAGES += \
+    audio \
+    dhcpcd.conf \
+    network \
+    pand \
+    pppd \
+    sdptool \
+    wpa_supplicant
+
+PRODUCT_PACKAGES += \
+    icu.dat
+
+PRODUCT_PACKAGES += \
+    librs_jni \
+    libvideoeditor_jni \
+    libvideoeditor_core \
+    libvideoeditor_osal \
+    libvideoeditor_videofilters \
+    libvideoeditorplayer \
+
+PRODUCT_PACKAGES += \
+    audio.primary.default \
+    audio_policy.default \
+    local_time.default \
+    power.default
+
+PRODUCT_PACKAGES += \
+    local_time.default
+
+PRODUCT_COPY_FILES := \
+        frameworks/av/media/libeffects/data/audio_effects.conf:system/etc/audio_effects.conf
+
+另外一些系统apk可以在/build/target/product/core.mk
+
+PRODUCT_PACKAGES += \
+    ApplicationsProvider \
+    BackupRestoreConfirmation \
+    BasicDreams \
+    Browser \
+    Contacts \
+    ContactsProvider \
+    DefaultContainerService \
+    DownloadProvider \
+    DownloadProviderUi \
+    HTMLViewer \
+    Home \
+    KeyChain \
+    MediaProvider \
+    PackageInstaller \
+    PicoTts \
+    SettingsProvider \
+    SharedStorageBackup \
+    TelephonyProvider \
+    UserDictionaryProvider \
+    VpnDialogs \
+    abcc \
+    apache-xml \
+    atrace \
+    bouncycastle \
+    bu \
+    cacerts \
+    com.android.location.provider \
+    com.android.location.provider.xml \
+    core \
+    core-junit \
+    dalvikvm \
+    dexdeps \
+    dexdump \
+    dexlist \
+    dexopt \
+    dmtracedump \
+    drmserver \
+    dx \
+    ext \
+    framework-res \
+    hprof-conv \
+    icu.dat \
+    installd \
+    ip \
+    ip-up-vpn \
+    ip6tables \
+    iptables \
+    keystore \
+    keystore.default \
+    libandroidfw \
+    libOpenMAXAL \
+    libOpenSLES \
+    libaudiopreprocessing \
+ libaudioutils \
+    libbcc \
+    libcrypto \
+    libdownmix \
+    libdvm \
+    libdrmframework \
+    libdrmframework_jni \
+    libexpat \
+    libfilterfw \
+    libfilterpack_imageproc \
+    libgabi++ \
+    libicui18n \
+    libicuuc \
+    libjavacore \
+    libkeystore \
+    libmdnssd \
+    libnativehelper \
+    libnfc_ndef \
+    libportable \
+    libpowermanager \
+    libspeexresampler \
+    libsqlite_jni \
+    libssl \
+    libstagefright \
+    libstagefright_chromium_http \
+    libstagefright_soft_aacdec \
+    libstagefright_soft_aacenc \
+    libstagefright_soft_amrdec \
+    libstagefright_soft_amrnbenc \
+    libstagefright_soft_amrwbenc \
+    libstagefright_soft_flacenc \
+    libstagefright_soft_g711dec \
+    libstagefright_soft_h264dec \
+    libstagefright_soft_h264enc \
+    libstagefright_soft_mp3dec \
+    libstagefright_soft_mpeg4dec \
+    libstagefright_soft_mpeg4enc \
+    libstagefright_soft_vorbisdec \
+    libstagefright_soft_vpxdec \
+    libstagefright_soft_rawdec \
+    libvariablespeed \
+    libwebrtc_audio_preprocessing \
+    libwilhelm \
+    libz \
+    make_ext4fs \
+    mdnsd \
+    requestsync \
+    screencap \
+    sensorservice \
+    lint \
+    uiautomator \
+    telephony-common \
+    mms-common \
+    zoneinfo.dat \
+  zoneinfo.idx \
+    zoneinfo.version
+
+PRODUCT_COPY_FILES += \
+    system/core/rootdir/init.usb.rc:root/init.usb.rc \
+    system/core/rootdir/init.trace.rc:root/init.trace.rc \
+
+# host-only dependencies
+ifeq ($(WITH_HOST_DALVIK),true)
+    PRODUCT_PACKAGES += \
+        apache-xml-hostdex \
+        bouncycastle-hostdex \
+        core-hostdex \
+        libcrypto \
+        libexpat \
+        libicui18n \
+        libicuuc \
+        libjavacore \
+        libssl \
+        libz-host \
+        dalvik \
+        zoneinfo-host.dat \
+        zoneinfo-host.idx \
+        zoneinfo-host.version
+endif
+
+ifeq ($(HAVE_SELINUX),true)
+    PRODUCT_PACKAGES += \
+        sepolicy \
+        file_contexts \
+        seapp_contexts \
+        property_contexts \
+        mac_permissions.xml
+endif
+
+$(call inherit-product, $(SRC_TARGET_DIR)/product/base.mk)
