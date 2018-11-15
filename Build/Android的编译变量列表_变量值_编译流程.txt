@@ -13,6 +13,39 @@ Android的编译第三步是使用mka命令进行编译，
 3) checkbuild用于检验那些需要检验的模块
 4) all如果使用all修饰编译目标，会编译所有模块
 
+TARGET_OUT_ROOT := $(TARGET_OUT_ROOT_$(TARGET_BUILD_TYPE))
+					//build/make/core/envsetup.mk
+
+TARGET_PRODUCT_OUT_ROOT := $(TARGET_OUT_ROOT)/product
+					//build/make/core/envsetup.mk
+
+PRODUCT_OUT := $(TARGET_PRODUCT_OUT_ROOT)/$(TARGET_DEVICE)  		//build/make/core/envsetup.mkで設定
+		=$(TARGET_OUT_ROOT_$(TARGET_BUILD_TYPE))/product/$(TARGET_DEVICE)
+ 		=out/target/product/xxx/
+
+------------------------------------------------------------------------------------
+TARGET_COPY_OUT_RECOVERY := recovery                        //build/make/core/envsetup.mk
+
+TARGET_RECOVERY_OUT := $(PRODUCT_OUT)/$(TARGET_COPY_OUT_RECOVERY)
+TARGET_RECOVERY_ROOT_OUT := $(TARGET_RECOVERY_OUT)/root
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+
+------------------------------------------------------------------------------------
+TARGET_OUT_EXECUTABLES := $(TARGET_OUT)/bin 				        //build/core/envsetup.mk:
+
+TARGET_OUT := $(PRODUCT_OUT)/$(TARGET_COPY_OUT_SYSTEM)  		//envsetup.mk:
+TARGET_COPY_OUT_SYSTEM := system 					                  //envsetup.mk:
+
+
+# Copy adbd from system/bin to recovery/root/sbin
+$(hide) cp -f $(TARGET_OUT_EXECUTABLES)/adbd $(TARGET_RECOVERY_ROOT_OUT)/sbin/adbd
+
+
+PRODUCT_MANUFACTURER
+PRIVATE_RECOVERY_OUT
+MKBOOTFS
+
+
 -------------------------------------------------------------------------------------------------
 研究Android编译流程时,最头疼的可能是变量，成百个变量，无法记住其含义,是什么值...参考值：
 -------------------------------------------------------------------------------------------------
