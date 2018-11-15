@@ -1,0 +1,233 @@
+Android.bp
+
+Android Nougat（7.0）中引入的Android.bp，及其相关工具链、Blueprint与Soong
+
+Android.mk ---> Android.bp ---> Ninja File.
+
+
+最近更新了Android Nougat源码，无意间发现Android的编译系统已经发生了巨大改变，到处是“Android.bp”文件，下面就来看一下这个bp文件到底是何方神圣。
+
+首先从Soong说起，Soong是Android中对基于GNU make的编译系统的替代物，编译文件“Android.mk”被替换为“Android.bp”。bp文件的目的就是一切从简，格式类似于JSON，像mk文件的条件控制语句等这些复杂的东西都由Go来处理，bp文件是由Go语言来解析的，为“blueprint”框架，随后转为Ninja文件，这大概就是Google的Go兴起后转而使用Go来重构自己的编译系统。bp文件的语法、语义同Bazel，如下网址是Bazel的参考文档： 
+https://bazel.build/versions/master/docs/be/overview.html
+
+Bazel是Google开源的自动化构建工具，意在替换复杂、臃肿的Makefile，这里不做详细介绍。下面介绍bp文件的常用规则。
+
+1、模块
+定义一个模块从模块的类型开始，模块有不同的类型，如下例子中的“cc_binary”，模块包含一些属性，格式为“property-name: property-value”，其中name属性必须指定，其属性值必须是全局唯一的。
+
+cc_binary {
+    name: "gzip",
+    srcs: ["src/test/minigzip.c"],
+    shared_libs: ["libz"],
+    stl: "none",
+}
+
+默认模块“cc_defaults”的用法如下（效果同上面的例子）：
+
+cc_defaults {
+    name: "gzip_defaults",
+    shared_libs: ["libz"],
+    stl: "none",
+}
+
+cc_binary {
+    name: "gzip",
+    defaults: ["gzip_defaults"],
+    srcs: ["src/test/minigzip.c"],
+}
+
+
+2、变量
+变量赋值使用“=”或“+=”，有其作用域，例子如下。
+
+gzip_srcs = ["src/test/minigzip.c"],
+
+cc_binary {
+    name: "gzip",
+    srcs: gzip_srcs,
+    shared_libs: ["libz"],
+    stl: "none",
+}
+
+3、注释
+注释包括单行注释和多行注释，例子如下。
+
+// single-line comment
+/*
+* multi-line comment
+*/
+
+4、类型
+变量和属性都有类型，变量的类型在其第一次赋值时而定，属性的类型由其模块类型而定，具体支持以下几种类型。
+
+Bool类型：true或false 
+String类型："string" 
+字符串列表类型：["string1", "string2"] 
+Map类型：{key1: "value1", key2: "value2"}
+
+5、操作符
+String类型、字符串列表类型和Map类型支持操作符“+”。
+
+6、格式控制工具
+bpfmt是一个bp文件的格式控制工具，包括4个空格的缩进、列表有多个元素时每个元素一行、列表和map的最后一个元素多一个冗余的逗号等等，如下例子用于递归格式化当前目录下的所有bp文件
+
+bpfmt -w .
+1
+7、从Android.mk到Android.bp
+androidmk Android.mk > Android.bp
+1
+androidmk工具可以把mk文件转换为bp文件，但一些发杂的用法和自定义的规则需要手动转换。
+--------------------- 
+
+
+Android.bp，是用来替换Android.mk的配置文件。 它使用Blueprint框架来解析，最终转换成Ninja文件。
+
+与Android.mk不同的是，Android.bp是纯粹的配置文件，不包含分支、循环等流程控制，也不能做算数、逻辑运算。 
+与此同时，Ninja文件也是如此。 
+
+这就产生了一些新的问题与需求——在Android项目上进行选择编译、解析配置、转换成Ninja等----Soong应运而生.
+
+Soong其实就相当于Makefile编译核心，即build/make/core/下面的内容, 它负责提供Android.bp的含义定义与解析，并将之转换为Ninja文件。
+此外，Soong还会编译产生一个androidmk命令，可以手动把Android.mk转换成Android.bp。 这只对无选择、循环等复杂流程控制的Android.mk生效。
+
+
+Blueprint和Soong都是由Golang写的项目。 从Android Nougat开始，prebuilts/go/目录下新增了Golang所需的运行环境，在编译时使用。
+
+Android.bp以及相关支持，从Android Nougat开始加入，从Android Oreo（8.0）开始默认开启。 如果需要在Android Nougat的版本使用，需要在执行编译时添加变量。
+
+make 'USE_SOONG=true'
+单独编译blueprint
+启用Soong以后，在Android编译最开始的准备阶段，会执行build/soong/soong.bash进行环境准备。 其中会先编译、安装Blueprint到out目录下。 也就是说，在编译Android项目时，Android.bp相关工具链会自动编译，无需费神。
+
+Soong是与Android强关联的一个项目，而Blueprint则相对比较独立，可以单独编译、使用。
+
+编译Blueprint，首先要具备Golang环境。 然后，按照以下步骤执行命令。
+
+go get github.com/google/blueprint
+cd $GOPATH/src/github.com/google/blueprint
+./bootstrap.bash
+./blueprint.bash
+ls bin
+在新生成的bin目录中，包含4个可执行文件：
+
+bpfmt
+bpmodify
+microfactory
+minibp
+由于文档较少，甚至连帮助命令都不包括命令的描述，所以其作用只能望文生义。
+
+工具链关系
+Android.mk、Android.bp、Soong、Blueprint、Ninja，它们之间到底有什么关系？ 以下用简单的方式表达这几个概念之间的作用关系。
+
+Android.bp --> Blueprint --> Soong --> Ninja
+Makefile or Android.mk --> kati --> Ninja
+
+(Android.mk --> Soong --> Blueprint --> Android.bp)
+Blueprint是生成、解析Android.bp的工具，是Soong的一部分。 Soong则是专为Android编译而设计的工具，Blueprint只是解析文件的形式，而Soong则解释内容的含义。
+
+Android.mk可以通过Soong提供的androidmk转换成Android.bp，但仅限简单配置。 目前Oreo的编译流程中，仍然是使用kati来做的转换。
+
+现存的Android.mk、既有的Android.bp，都会分别被转换成Ninja。 从Android.mk与其它Makefile，会生成out/build-<product_name>.ninja文件。 而从Android.bp，则会生成out/soong/build.ninja。 此外，还会生成一个较小的out/combined-<product_name>.ninja文件，负责把二者组合起来，作为执行入口。
+
+最终，Ninja文件才是真正直接控制源码编译的工具。
+
+Android.bp
+样例与基本概念
+    // Android.bp sample
+    cc_defaults(
+        deps = [
+            "libc",
+        ],
+    )
+
+    cc_library(
+        name = "cmd",
+        srcs = [
+            "main.c",
+        ],
+    )
+
+    subdirs = ["subdir1", "subdir2"]
+前面的样例中，cc_library这种()前面的，就是模块（module）。 这里module的概念，直接对应Android.mk中module的概念。 而=前面的name、srcs等，就是该模块的属性（property）。
+
+subdirs是一个文件级的顶层属性，指定后会查找次级目录下的Android.bp。 类似于Android.mk中常用的include $(call all-subdir-makefiles)。
+
+模块是可以继承属性的。 cc_defaults就是一个文件中所有模块的父模块，可以指定公用的属性。 在以上代码中，cc_library模块虽然没有指定，但已经包含了deps属性。
+
+语法
+Blueprint文件的语法比较简单，毕竟只是配置文件。
+
+变量与属性都是动态强类型的，赋值时确定。 变量类型只有四种。
+
+Bool（true或false）
+字符串Strings（”string”）
+字符串列表（["string1", "string2"]）
+映射关系Map（{key1: "value1", key2: ["value2"]}）
+注释方式，与Golang类似。 支持行注释// line与块注释/* block */。
+
+操作符除了赋值的=以外，只有+。
+
+常用工具
+虽然编译过程中的相关很多，不过在开发过程中可能需要手动执行的命令却不多。
+
+一个是格式化工具bpfmt。 与gofmt类似，可以格式化Blueprint文件。 （其实，代码基本上都是从gofmt复制而来。）
+
+例如，格式化当前目录及其递归子目录下的所有Android.bp：
+
+bpfmt -w .
+另一个是androidmk，负责转换Android.mk为Android.bp。 其实，现阶段没有必要学会写Android.bp，通过写Android.mk来转换也行。
+
+androidmk Android.mk > Android.bp
+Android.mk转换Android.bp实例
+下面，以一个AOSP上的简单模块，system/core/sdcard/Android.mk，来做为案例。
+
+    LOCAL_PATH := $(call my-dir)
+
+    include $(CLEAR_VARS)
+
+    LOCAL_SRC_FILES := sdcard.cpp fuse.cpp
+    LOCAL_MODULE := sdcard
+    LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror
+    LOCAL_SHARED_LIBRARIES := libbase libcutils libminijail libpackagelistparser
+
+    LOCAL_SANITIZE := integer
+
+    include $(BUILD_EXECUTABLE)
+这是一个编译二进制可执行文件的小模块，内容非常简单。 通过执行androidmk Android.mk > Android.bp，可以转换成Android.bp。
+
+    cc_binary {
+        srcs: [
+            "sdcard.cpp",
+            "fuse.cpp",
+        ],
+        name: "sdcard",
+        cflags: [
+            "-Wall",
+            "-Wno-unused-parameter",
+            "-Werror",
+        ],
+        shared_libs: [
+            "libbase",
+            "libcutils",
+            "libminijail",
+            "libpackagelistparser",
+        ],
+        sanitize: {
+            misc_undefined: ["integer"],
+        },
+    }
+可以看出，虽然行数变多，但其实含义更明确了。 这个名为sdcard的模块，源码有两个cpp文件，依赖库有四个。 cc_binary，就相当于include $(BUILD_EXECUTABLE)。 转换前后，该有的信息都在，只是表达方式变化了而已。
+
+注意：如果Android.mk中包含复杂的逻辑，则转换结果会有问题，详见结果文件中的注释。
+
+至于Android.bp支持多少像cc_binary、cc_library这样的模块，每个模块又支持多少像name、cflags这样的属性， 则只能去查找Soong的文档。
+
+文档
+目前（2017年），整个Android.bp工具链，都处于文档极度缺失的阶段。 除了官方那点可怜的README以外，基本只能去看代码与注释，参考其它已经存在的Android.bp。
+
+另外，在已经使用Soong编译的项目中，out/soong/.bootstrap/docs/soong_build.html描述了所有的可用模块及其属性。 
+这多少缓解了两眼一抹黑症状，不算太过难受。 
+实际上，整个Soong仍然处于发展期，Google肆无忌惮地修改，完全没考虑兼容。 
+
+在8.0.0写的Android.bp，也许在8.0.1就会编译失败。 
+这或许是文档与编译绑定的真意吧。 等Soong完全成熟了，也许Android开发官网，就会有详尽的信息。
