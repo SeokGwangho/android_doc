@@ -1,0 +1,580 @@
+
+Android的加载/链接器linker
+
+
+Reference：
+[1]  漫谈兼容内核之八: ELF映像的装入 毛德操
+[2]  Linkers and loaders.
+[3]  How to write shared libraries.
+[4]  C++异常机制的实现方式和开销分析
+----------------------------------------------------------------
+Android的加载/链接器linker 主要用于实现【共享库】的加载与链接。 
+----------------------------------------------------------------
+它支持应用程序对库函数的隐式和显式调用。
+
+对于隐式调用，应用程序的编译与静态库大致相同，只是在【静态链接】的时候通过--dynamic-linker /system/bin/linker 指定动态链接器，
+（该信息将被存放在ELF文件的.interp节中，内核执行目标映像文件前将通过该信息加载并运行相应的解释器程序linker.）并链接相应的共享库。
+与ld.so不同的是，Linker目前没有提供Lazy Binding机制，所有外部过程引用都在映像执行之前解析。
+
+
+对于显式调用，可以同过linker中提供的接口dlopen，dlsym,dlerror和dlclose来【动态加载】和【链接】共享库。
+	
+  
+----------------------------------------------------------------
+Android中的【共享库】和【可执行映像】都默认采用【ELF格式】的文件，其基本格式如下：
+----------------------------------------------------------------
+            -------去参考 赵炯的ELF格式说明
+
+每个ELF文件的开始部分，都包含一个ELF头：
+    其中包含了整个文件的基本信息，包括目标代码的格式，体系结构，各程序头或节头的偏移和大小，组织结构和访问权限等信息。
+    程序头表包含了加载到内存中的各种段的索引及属性信息，它将告诉加载器如何加载映像。
+    每个段中又包含了一个或几个节区，每个节区应是唯一的。
+    
+    
+无论是可执行程序，还是共享库，都包含以下几个的节区：
+1. GOT表和PLT表：
+       不同映像间的函数和数据引用都是通过它们实现的。
+       GOT（全局偏移表）给出了映像中所有被引用符号（函数或变量）的值。
+       每个普通PLT表项相当于一个函数的桩函数（stub），支持懒绑定的情况下，当发生对外部函数的调用时，程序会通过PLT表将控制交给动态连接器，
+       后者解析出函数的绝对地址，修改GOT中相应的值，之后的调用将不再需要连接器的绑定。
+       由于linker是不支持懒绑定的，所以在进程初始化时，动态链接器首先解析出外部过程引用的绝对地址，一次性的修改所有相应的GOT表项。
+       
+       
+       对共享对象来说，由于GOT，PLT节以及代码段和数据段之间的相对位置是固定的，所有引用都是基于一个固定地址（GOT）的偏移量，所以实现了PIC代码，
+       重定位时只需要修改可写段中的GOT表。
+       
+       而可执行程序在连接过程中则可能发生对不可写段的修改。
+       如果只读段和可写段不是以固定的相对位置加载的，那么在重定位是还需要修改所有指向GOT的指针。   
+
+2. dynamic节：
+       与重定位有关的基本目录结构，例如：
+
+Dynamic section at offset 0x3fb08 contains 36 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000003 (PLTGOT)             0x4fdf8
+ 0x0000000000000002 (PLTRELSZ)           1488 (bytes)
+ 0x0000000000000017 (JMPREL)             0x59e8
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000007 (RELA)               0xc90
+ 0x0000000000000008 (RELASZ)             19800 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffff9 (RELACOUNT)          825
+ 0x0000000000000015 (DEBUG)              0x0
+ 0x0000000000000006 (SYMTAB)             0x288
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000005 (STRTAB)             0x8d0
+ 0x000000000000000a (STRSZ)              725 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0xba8
+ 0x0000000000000001 (NEEDED)             Shared library: [libnetd_client.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libcutils.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libasound.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libpng.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc++.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [liblog.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libz.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libdl.so]
+ 0x0000000000000020 (PREINIT_ARRAY)      0x4f860
+ 0x0000000000000021 (PREINIT_ARRAYSZ)    0x10
+ 0x0000000000000019 (INIT_ARRAY)         0x4f870
+ 0x000000000000001b (INIT_ARRAYSZ)       16 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x4f880
+ 0x000000000000001c (FINI_ARRAYSZ)       16 (bytes)
+ 0x000000000000001e (FLAGS)              BIND_NOW
+ 0x000000006ffffffb (FLAGS_1)            Flags: NOW
+ 0x000000006ffffff0 (VERSYM)             0xbd8
+ 0x000000006ffffffe (VERNEED)            0xc60
+ 0x000000006fffffff (VERNEEDNUM)         1
+ 0x0000000000000000 (NULL)               0x0
+
+
+3. dynsym和dynstr节：
+       与重定位有关的符号表和字符串表：
+
+Symbol table '.dynsym' contains 69 entries:
+
+   Num:    Value   Size  Type    Bind       Vis        Ndx   Name
+     0:   00000000   0  NOTYPE  LOCAL   DEFAULT  UND
+     ……
+     6:  00002568    28  FUNC    GLOBAL  DEFAULT    7   __ashldi3
+     7:  00000001    58  FUNC    GLOBAL  DEFAULT  UND  _ZNK7android7RefBase9decS
+     8:  00000001    32  FUNC    GLOBAL  DEFAULT  UND  ioctl
+     9:  00000001    18  FUNC    GLOBAL  DEFAULT  UND  _ZN7android7String8D1Ev
+    10:  00000001    16  FUNC    GLOBAL  DEFAULT  UND  _ZNK7android8EventHub16ge
+    11:  00000001    32  FUNC    GLOBAL  DEFAULT  UND  strerror
+    12:  00003024     0  NOTYPE  GLOBAL  DEFAULT  ABS  __exidx_end
+
+4. .rel.dyn和.rel.plt节：
+       .rel.dyn节的表项对应了出外部过程调用的符号以外的所有重定位对象，.rel.plt则对应所有外部过程调用的重定位信息。每个重定位项记录了符号的符号表索引，重定位的操作地址，重定位类型的信息（见3.3节）。重定位所在的节区往往与重定位类型有关，例如：
+
+Relocation section '.rel.plt' at offset 0x2f08 contains 308 entries:
+
+ Offset     Info      Type                  Sym.Value  Sym. Name
+
+000710e8  00000116   R_ARM_JUMP_SLOT   0000b8d0   fileno
+
+000710ec  00000216   R_ARM_JUMP_SLOT   0000b8dc   getpagesize
+
+000710f0  00000316   R_ARM_JUMP_SLOT   0000b8e8   fputs
+
+000710f4  00000416   R_ARM_JUMP_SLOT   0000b8f4   abort
+
+000710f8  00000516   R_ARM_JUMP_SLOT   0000b900   __errno_location
+
+ 
+
+Relocation section '.rel.dyn' at offset 0x2e98 contains 14 entries:
+
+ Offset     Info      Type            Sym.Value  Sym. Name
+
+000715b8  00001e15  R_ARM_GLOB_DAT    00071000   __fini_array_end
+
+000715bc  00002f15  R_ARM_GLOB_DAT    00000000   __gmon_start__
+
+000715c8  0000f515  R_ARM_GLOB_DAT    00071000   __fini_array_start
+
+000715cc  00010015  R_ARM_GLOB_DAT    00071000   __init_array_end
+
+000715d0  00012e15  R_ARM_GLOB_DAT    00071000   __init_array_start
+
+00072a00  00002714  R_ARM_COPY         00072a00   __timezone
+
+00072a04  00005514  R_ARM_COPY         00072a04   __daylight
+
+ 
+
+       R_ARM_JUMP_SLOT和R_ARM_GLOB_DAT属性的重定位地址一般位于GOT表，R_ARM_COPY和R_ARM_ABS32属性的重定位一般位于.data节或.text节中。
+
+Linker的加载与启动
+       Linker是共享库的加载/链接器，也可以称为解释器(interpreter)。共享库以ELF文件的形式保存在文件系统中，核心的load_elf_binary会首先将其映像文件映射到内存，然后映射并执行其解释器也就是linker的代码。linker的代码段是进程间共享的，但数据段为各进程私有。
+
+linker执行完后会自动跳转到目标映像的入口地址。
+
+       /*in sys_execve->do_execve->search_binary_handler->load_elf_binary*/
+
+       elf_entry = load_elf_interp(&loc->interp_elf_ex,interpreter,&interp_map_addr, load_bias);
+
+       ………..
+
+       start_thread(regs, elf_entry, bprm->p);       //start to execute linker
+
+       在android中,linker代码的运行域由地址0xb0000100开始(see /bionic/linker/Android.mk)，直接从_start开始执行。do_execve会预先将应用程序参数(argc,argv[],envc和envp[]还有一些"辅助向量(Auxiliary Vector)"等（see load_elf_binary>create_elf_tables）)存放在分配好的用户空间堆栈中，通过堆栈将这些参数和指针(位于linux_binprm结构体bprm中)传递给用户空间的目标进程。
+
+       Linker会提取出它所需要的信息，例如目标映像中程序头表在用户空间的地址以及应用程序入口等。
+
+       /*in __linker_init()*/
+
+               /* extract information passed from the kernel */
+
+    while(vecs[0] != 0){
+
+        switch(vecs[0]){
+
+        case AT_PHDR:
+
+            si->phdr = (Elf32_Phdr*) vecs[1];
+
+            break;
+
+        case AT_PHNUM:
+
+            si->phnum = (int) vecs[1];
+
+            break;
+
+        case AT_ENTRY:
+
+            si->entry = vecs[1];                /*entry of the executable image.*/
+
+            break;
+
+        }
+
+        vecs += 2;
+
+}
+
+加载依赖的共享库
+Linker会首先调用__linker_init执行一段自举代码，完成其自身的初始化，初始化与目标映像相关的数据结构。Linker会首先调用alloc_info为目标映像分配一个soinfo结构体，它用于存放与映像文件有关的所有信息,这样可以使可执行映像与共享对象共享连接与重定位函数，后面的程序将通过soinfo的flags域判断目标映像是共享库还是可执行程序。
+
+    si = alloc_info(argv[0]);                  /*name of exe */
+
+    if(si == 0) {
+
+        exit(-1);
+
+    }
+
+       ………
+
+    si->flags |= FLAG_EXE;                 /*exe not share library*/
+
+与共享库的链接操作通过函数link_image调用其它函数执行。Link_image会对ELF文件进行解析，根据DYNAMIC段确定目标映像(可能是可执行程序或共享库)依赖的共享库,调用find_library函数在soinfo链表中搜索并加载这些共享库。Soinfo链表是进程私有的全局变量，无论其它进程是否已将某一共享库加载至内存，依赖它的进程都需要调用mmap来建立其虚拟内存到实际物理内存的映射，这是因为每个进程都有它自己的mm_struct内存描述符和vm_area_struct结构体链表(每个vm_area_struct对应了该进程虚拟地址空间的一个区域（VMA）)，同一个物理内存中的映射文件在不同的进程中会被映射到不同的虚拟地址空间。在linux下可以使用pmap(pid)或cat /proc/(pid)/maps查看相应进程的地址空间分布，会发现同一个库（如libc.so）被放到了不同的地址上。实际的从文件到内存页的拷贝发生在程序对相应的虚拟内存进行读写操作的时候，系统发生缺页异常，从而产生一次调页请求，内核根据操作的不同创建后援文件页或COW页。
+
+如果在搜索链表的过程中发现该库已经存在，则find_library直接返回该库的soinfo结构，以防止发生重复的加载甚至进入无限递归，否则会调用load_library进行实际的加载操作，库的加载地址均位于0x80000000到0x90000000之间(prelink的库除外),库与库之间以1MB对齐，库的代码段和数据段都是页对齐的。
+
+    for(d = si->dynamic; *d; d += 2) {
+
+          f(d[0] == DT_NEEDED){             //it ‘s a needed share library.
+
+              soinfo *lsi = find_library(si->strtab + d[1]);  //get soinfo by name         
+
+              if(lsi == 0) {
+
+                   goto fail;
+
+            }
+
+        lsi->refcount++;                  //  Increment it’s referenced count
+
+        }
+
+    }
+
+load_library的具体加载过程是：
+
+1.       读取共享库的文件头和程序头表到指定的页中。
+
+2.       调用get_lib_extents分析ELF头表，并获取文件中的地址信息。如果该库不是prelink的，则库加载的起始地址为零。同时计算出加载该库所需总的内存空间大小。
+
+3.       根据已获得的起始地址和总空间大小，调用alloc_mem_region预先为共享库分配一段内存空间。这段空间是通过系统调用mmap实现的，其访问属性是PROT_READ | PROT_EXEC和 MAP_PRIVATE | MAP_ANONYMOUS,文件描述符为-1，匿名私有的内存映射意味着，内核将为该库分配虚拟线性区，保留给后边进行内存映射文件的操作。
+
+           while(libbase < LIBLAST) {  //LIBLAST=0x90000000
+
+        base = mmap((void*) libbase, sz, PROT_READ | PROT_EXEC,
+
+                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+        if(((unsigned)base) == libbase) {
+
+            return base;      
+
+        }
+
+        if(base != MAP_FAILED)
+
+               munmap(base, sz);
+
+        libbase += LIBINC;    // LIBINC = 0x00100000，再进行一次映射。
+
+    }
+
+4.       调用alloc_info为该库在共享库链表中分配一个soinfo节点，初始化其数据   结构。
+
+5.       调用load_segments将所有的PT_LOAD属性的段加载至合适的地址空间，代码段与数据段的相对位置与文件的运行域一致。  
+
+       pbase = mmap(tmp, len, PFLAGS_TO_PROT(phdr->p_flags),MAP_PRIVATE |    MAP_FIXED, fd,phdr->p_offset & (~PAGE_MASK));
+
+       如果该段是只读的，则核心将其映射致内存中唯一的拷贝，如果该段是可写的，    则NAP_PRIVATE意味着该段是写时拷贝的，只有在写操作时核心才会将相应的    页面拷贝至内存。由于需要对可执行映像中位于只读段的代码进行重定位，所       以调用mprotect    将只读段的属性暂时更改为R/W/E的。 
+
+if (si->flags & FLAG_EXE) {
+
+       ……        
+
+                    if (!(phdr->p_flags & PF_W)) {
+
+                if ((unsigned)pbase < si->wrprotect_start)
+
+                    si->wrprotect_start = (unsigned)pbase;
+
+                if (((unsigned)pbase + len) > si->wrprotect_end)
+
+                    si->wrprotect_end = (unsigned)pbase + len;
+
+                         mprotect(pbase, len,PFLAGS_TO_PROT(phdr->p_flags) |                                                  PROT_WRITE);
+
+            }
+
+                    ……
+
+             }
+
+                    共享库代码由于是位置无关的，所以只需要可写段中的.got段（COW的），                 所以不需要只读段的内存保护。
+
+                    如果bss段的区间中包含页边界，则对超出的部分作另外的匿名映射，                          private anonymous mappings意味着当这些内存映射被取消映射时，内存会真的                     将其释放给系统。
+
+       if (tmp < (base + phdr->p_vaddr + phdr->p_memsz)) {
+
+       extra_base = mmap((void *)tmp, extra_len，PFLAGS_TO_PROT(phdr->p_flags), MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+
+加载完成后load_library会调用init_library进行库的初始化操作，init_library又会调用link_image，链接共享库的映像文件，共享对象的链接与重定位过程参考3.3节。
+
+可执行映像的重定位
+加载目标映像的所有依赖库后，link_image调用reloc_library函数根据DYNAMIC段中的DT_REL和DT_JMPREL属性节区对目标映像进行重订位，两种属性的节区都是Elf32_Rel结构体的链表。
+
+typedef struct elf32_rel {
+
+  Elf32_Addr       r_offset;           //重定位偏移量，以目标文件加载地址为基准
+
+  Elf32_Word      r_info;                    //包含了重定位类型和在符号表中的索引    
+
+} Elf32_Rel;
+
+DT_JMPREL包含了与PLT表相关的重定位信息，把它与主重定位表分离是为了支持懒绑定，以便让连接器在进程初始化时跳过这些重定位，而在运行时发生外部过程调用时通过PLT表调用连接器函数实现绑定。由于linker不支持懒绑定，所以对该表的重定位也需要提前到进程初始化时进行。
+
+/*in myandroid/build/core/armelf.xsc*/
+
+  .rel.dyn        :
+
+    {
+
+      *(.rel.init)
+
+      *(.rel.text .rel.text.* .rel.gnu.linkonce.t.*)
+
+      *(.rel.fini)
+
+      *(.rel.rodata .rel.rodata.* .rel.gnu.linkonce.r.*)
+
+      *(.rel.data.rel.ro* .rel.gnu.linkonce.d.rel.ro.*)
+
+      *(.rel.data .rel.data.* .rel.gnu.linkonce.d.*)
+
+      *(.rel.tdata .rel.tdata.* .rel.gnu.linkonce.td.*)
+
+      *(.rel.tbss .rel.tbss.* .rel.gnu.linkonce.tb.*)
+
+      *(.rel.ctors)
+
+      *(.rel.dtors)
+
+      *(.rel.got)
+
+      *(.rel.bss .rel.bss.* .rel.gnu.linkonce.b.*)
+
+    }
+
+  .rel.plt        : { *(.rel.plt) }
+
+属性在重定位的过程中,linker会调用_do_lookup在soinfo结构体链表中的所有映像文件的符号表中查找该符号的实际地址，然后修改.rel.plt表项所指向的该符号在映像(位于.got段）中的地址。对.rel.plt段的重定位将解析所有外部过程引用（符号属性st_shndx为STN_UNDEF），完成与共享库的链接。
+
+/*in link_image()*/
+
+    if(si->plt_rel) {                          /*it ‘s a .rel.plt (DT_JMPREL) section*/
+
+      if(reloc_library(si, si->plt_rel, si->plt_rel_count))//binding all the external func
+
+            goto fail;
+
+    }
+
+    if(si->rel) {                             /*it ‘s a .rel.dyn (DT_REL)section*/
+
+        if(reloc_library(si, si->rel, si->rel_count))
+
+            goto fail;
+
+    }
+
+重定位的过程也是解析和绑定符号的过程，主要要解决的两个问题是：
+
+1．  如何找出有哪些符号需要重定位。
+
+2．  这些符号的重定位类型（R_ARM_GLOB_DAT,R_ARM_JUMP_SLOT…）及相应的重定位操作。
+
+    
+
+
+
+					符号绑定示意图
+
+ 
+
+上图给出了linker进行符号绑定过程涉及到的主要数据对象及其关系，Dyn段中给出了所有与重定位有关的数据结构的组成分布。Rel代表了所有重定位表项。每个重定位表项对应一个Symtab表项和一个strtab表项。Symtab和strtab也一一对应，但strtab中只包含了字符串，并不能指向其它的表。Hash表与symtab表中的索引项相对应，通过它可以加快符号查找的速度。同一个符号在“对象层”可能出现多次。
+
+ 
+
+       Linker中符号的绑定过程大致如下：
+
+首先在reloc_library中队重定位节的每个Rel表项的rel->r_info成员依次进行解析，得到该重定位符号在本地符号表中的索引，该符号的重定位类型以及应进行修改的位置。根据符号索引在字符串表中找到相应的符号字符串，调用_do_lookup函数在soinfo链表对应的共享库中查找该符号。
+
+   /*in reloc_library ()*/
+
+    for (idx = 0; idx < count; ++idx) {          //count = si->plt_rel_count.
+
+        unsigned type = ELF32_R_TYPE(rel->r_info);
+
+        unsigned sym = ELF32_R_SYM(rel->r_info);
+
+        unsigned reloc = (unsigned)(rel->r_offset + si->base);
+
+        if(sym != 0) {
+
+            /*search symbol within solist*/
+
+                    s = _do_lookup(si, strtab + symtab[sym].st_name, &base);
+
+            if ((s->st_shndx == SHN_UNDEF) && (s->st_value != 0)) {return -1;}
+
+}
+
+_do_lookup首先会调用_do_lookup_in_so在目标映像本地的符号表中查找该符号，这个过程会解析出本地的重定位符号，对于未定义的外部符号，_do_lookup_in_so会返回0，然后
+
+_do_lookup开始进入一个for循环，遍历整个soinfo链表。为每个soinfo调用一次_do_lookup_in_so。
+
+       /* in _do_lookup（）*/
+
+    for(si = solist; (s == NULL) && (si != NULL); si = si->next)
+
+    {
+
+        if((si->flags & FLAG_ERROR) || (si == user_si))
+
+            continue;
+
+        s = _do_lookup_in_so(si, name, &elf_hash);
+
+        if (s != NULL) {
+
+            *base = si->base;
+
+            break;
+
+        }
+
+}
+
+_do_lookup_in_so首先会调用elfhash计算出未定义字符串的hash值，将该值作为参数传递给_elf_lookup,它将最终返回符号对应的值。
+
+static Elf32_Sym *_elf_lookup(soinfo *si, unsigned hash, const char *name)
+
+{
+
+    Elf32_Sym *s;
+
+    Elf32_Sym *symtab = si->symtab;
+
+    const char *strtab = si->strtab;
+
+    unsigned n;
+
+    n = hash % si->nbucket;
+
+    for(n = si->bucket[hash % si->nbucket]; n != 0; n = si->chain[n]){
+
+        s = symtab + n;
+
+        if(strcmp(strtab + s->st_name, name)) continue; /* only concern ourselves with                    global symbols */     
+
+        switch(ELF32_ST_BIND(s->st_info)){
+
+        case STB_GLOBAL:
+
+            if(s->st_shndx == 0) continue;  /* no section == undefined */
+
+        case STB_WEAK:
+
+            return s;
+
+        }
+
+    }
+
+    return 0;
+
+}
+
+程序中的参数hash是针对目标符号字符串计算出的hash值，bucket[hash % si->nbucket]
+
+对应于符号表中的一个索引，根据这个索引找到相应的符号，与目标符号比较，相同则返回该符号的值（s->st_shndx == 0除外，说明该符号不在本文件定义），否则继续查找，n = si->chain[n]将给出相同hash值的另一个符号索引。
+
+       符号若找到，其对应的地址被返回给reloc_library.reloc_library会根据之前得到的重定位类型，用该值进行相应的重定位操作。
+
+       /*in reloc_library*/
+
+                          ……..
+
+            sym_addr = (unsigned)(s->st_value + base);   /*get the actual address.*/
+
+            sym_name = (char *)(strtab + symtab[sym].st_name);
+
+        }
+
+        switch(type){
+
+        case R_ARM_JUMP_SLOT:
+
+        case R_ARM_GLOB_DAT:
+
+        case R_ARM_ABS32:
+
+            *((unsigned*)reloc) = sym_addr;
+
+            break;
+
+        case R_ARM_RELATIVE:
+
+            if(sym){return -1; }
+
+            *((unsigned*)reloc) += si->base;
+
+            break;
+
+        case R_ARM_COPY:
+
+            memcpy((void*)reloc, (void*)sym_addr, s->st_size);  /*object in RW seg*/
+
+            break;
+
+        default: return -1;
+
+        }
+
+        rel++;
+
+    }
+
+    return 0;
+
+}
+
+ 
+
+整个加载与链接的过程通过link_image递归进行，最终所有相关映像文件均会被加载并连接，为避免递归式的加载与重定位过程导致进程启动的时间开销过大，可以使用mklibs工具控制共享库的数量。
+
+可执行映像的重定位完成后link_image之后会调用mprotect将代码段的权限改回可读可执行。
+
+    if (si->wrprotect_start != 0xffffffff && si->wrprotect_end != 0) {
+
+        mprotect((void *)si->wrprotect_start, si->wrprotect_end -                                        si->wrprotect_start, PROT_READ | PROT_EXEC);
+
+    }
+
+然后调用call_destructors，执行映像的初始化队列，最后返回映像的入口地址。Linker将直接跳入可执行映像并开始执行。
+
+/* begin.S */
+
+_start:
+
+      ……….
+
+      bl    __linker_init   /* linker init returns the _entry address in the main image */
+
+      mov pc, r0
+
+ 
+
+linker中定义了dl_unwind_find_exidx函数，该函数将通过dl.so导出给libc.so的__gnu_Unwind_Find_exidx函数，该函数可以根据PC计数器的值返回相应共享库中指向ARM_EXIDX段的指针（位于soinfo结构中），该段用于栈退回(stack unwinding)机制，确保C++在异常被抛出、捕获并处理后，所有生命期已结束的对象都会被正确地析构，它们所占用的空间会被正确地回收。可执行映像及共享库的soinfo结构用于栈退回的数据结构分别在link_image和load_library中被赋值。
+
+Unload_library用于卸载指定的共享库并卸载其依赖库中可以被卸载的库。
+
+       如果采用显式调用的方法动态链接使用共享库的例程，应用程序需要使用linker提供的外部接口，libdl.so中包含了所有这些接口，链接时在命令行加入-ldl，这样可执行映像的依赖库中将只包含libdl.so。dlopen是加载共享库的接口，它会调用find_library找到并加载共享库。dlsym会调用_do_lookup返回符号地址,dlerror用于错误检查,dlclose调用unload_library动态卸载共享库(进程退出时不会自动卸载不用的共享库)。用户也可以通过系统调用sys_uselib在核心态加载共享库，但该函数只支持固定地址加载。
+
+       生成共享库的基本方法与linux相同。在编译链接时在命令行加入
+
+ -shared 和 –fPIC，android共享库链接脚本为armelf.xcs。例如：
+
+       $ arm-none-linux-gnueabi-gcc -fpic -nostdlib -Wl,-T,armelf.xsc, -shared, -Bsymbolic -o libhello.so  hello.c     /*create shared object*/
+
+      在编译动态链接的可执行文件时使用--dynamic-linker ,-nostdlib, -rpath ,–L…. 指定解释器，共享库及搜索路径。例如：
+
+      $ arm-none-linux-gnueabi-gcc -c start.c 
+       $ arm-none-linux-gnueabi-gcc -c main.c
+      $ arm-none-linux-gnueabi-ld --dynamic-linker /system/bin/linker -nostdlib /
+   -rpath /system/lib -rpath ~/tmp/android/system/lib -L . /
+
+      -L ~/tmp/android/system/lib -lc -lhello -o hello2 start.o main.o
+
+      另外有两个特别的工具mklibs和apriori。mklib可用于查找并复制程序用到的最小的共享库集，apriori可以预先为若干共享库确定加载地址，并为有依赖关系的共享库做静态重定位和连接,解释器会在共享库加载时(see load_library)调用is_prelinked查看该库是否时prelink的并在alloc_mem_region中检查目的地址是否被占用。
+
