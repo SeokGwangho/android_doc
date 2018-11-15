@@ -1,0 +1,2099 @@
+Android的编译变量列表_变量值_编译流程.txt
+
+Android的编译第三步是使用mka命令进行编译，
+当然也可以使用make –j4，但是推荐使用mka命令。因为mka将自动计算-j选项的数字，让我们不用纠结这个数字到底是多少(这个数字其实就是所有cpu的核心数)。
+
+在编译时我们可以带上我们需要编译的目标，
+假设你想生成recovery，那么使用mka recoveryimage，
+如果想生成ota包，那么需要使用mka otapackage，后续会介绍所有可以使用的目标。
+另外注意有一些目标只是起到修饰的作用，也就是说需要和其它目标一起使用，共有4个用于修饰的伪目标:
+
+1) showcommands 显示编译过程中使用的命令
+2) incrementaljavac用于增量编译java代码
+3) checkbuild用于检验那些需要检验的模块
+4) all如果使用all修饰编译目标，会编译所有模块
+
+-------------------------------------------------------------------------------------------------
+研究Android编译流程时,最头疼的可能是变量，成百个变量，无法记住其含义,是什么值...参考值：
+-------------------------------------------------------------------------------------------------
+LOCAL_PATH build/core/base_rules
+LOCAL_MODULE build/core/base_rules
+LOCAL_IS_HOST_MODULE build/core/base_rules
+my_prefix build/core/base_rules
+my_host build/core/base_rules
+LOCAL_UNINSTALLABLE_MODULE build/core/base_rules
+LOCAL_MODULE_TAGS build/core/base_rules
+LOCAL_MODULE_CLASS build/core/base_rules
+partition_tag build/core/base_rules
+LOCAL_PROPRIETARY_MODULE build/core/base_rules
+LOCAL_MODULE_PATH build/core/base_rules
+module_id build/core/base_rules
+intermediates build/core/base_rules
+intermediates.COMMON build/core/base_rules
+LOCAL_MODULE_STEM build/core/base_rules
+LOCAL_MODULE_SUFFIX build/core/base_rules
+LOCAL_INSTALLED_MODULE_STEM build/core/base_rules
+LOCAL_BUILT_MODULE_STEM build/core/base_rules
+OVERRIDE_BUILT_MODULE_PATH build/core/base_rules
+built_module_path build/core/base_rules
+LOCAL_BUILT_MODULE build/core/base_rules
+LOCAL_INSTALLED_MODULE build/core/base_rules
+LOCAL_INTERMEDIATE_TARGETS build/core/base_rules
+LOCAL_INTERMEDIATE_TARGETS build/core/base_rules
+aidl_sources build/core/base_rules
+logtags_sources build/core/base_rules
+proto_sources build/core/base_rules
+LOCAL_INTERMEDIATE_SOURCE_DIR build/core/base_rules
+LOCAL_JAVA_RESOURCE_DIRS build/core/base_rules
+all_java_sources build/core/base_rules
+LOCAL_JAR_MANIFEST build/core/base_rules
+full_static_java_libs build/core/base_rules
+clean-$(LOCAL_MODULE) build/core/base_rules
+LOCAL_CHECKED_MODULE build/core/base_rules
+LOCAL_DONT_CHECK_MODULE build/core/base_rules
+ALL_MODULES build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).CLASS build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).PATH build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).TAGS build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).CHECKED build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).BUILT build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).INSTALLED build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).REQUIRED build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).EVENT_LOG_TAGS build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).INTERMEDIATE_SOURCE_DIR build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).MAKEFILE build/core/base_rules
+ALL_MODULES.$(LOCAL_MODULE).OWNER build/core/base_rules
+INSTALLABLE_FILES.$(LOCAL_INSTALLED_MODULE).MODULE build/core/base_rules
+ALL_MODULE_TAGS build/core/base_rules
+ALL_MODULE_TAGS.$(tag) build/core/base_rules
+ALL_MODULE_NAME_TAGS.$(tag) build/core/base_rules
+my_ndk_version_root build/core/binary
+LOCAL_SDK_VERSION build/core/binary
+HISTORICAL_NDK_VERSIONS_ROOT build/core/binary
+my_ndk_source_root build/core/binary
+my_ndk_version_root build/core/binary
+LOCAL_NDK_STL_VARIANT build/core/binary
+my_ndk_stl_include_path build/core/binary
+my_ndk_stl_shared_lib_fullpath build/core/binary
+my_ndk_stl_shared_lib build/core/binary
+my_ndk_stl_static_lib build/core/binary
+LOCAL_SYSTEM_SHARED_LIBRARIES build/core/binary
+insert-liblog build/core/binary
+LOCAL_SHARED_LIBRARIES build/core/binary
+LOCAL_STATIC_LIBRARIES build/core/binary
+LOCAL_WHOLE_STATIC_LIBRARIES build/core/binary
+installed_shared_library_module_names build/core/binary
+LOCAL_SYSTEM_SHARED_LIBRARIES build/core/binary
+LOCAL_REQUIRED_MODULES build/core/binary
+LOCAL_CLANG build/core/binary
+LOCAL_CFLAGS build/core/binary
+LOCAL_LDFLAGS build/core/binary
+LOCAL_ADDRESS_SANITIZER build/core/binary
+CLANG build/core/binary
+CLANG_CXX build/core/binary
+LOCAL_ENABLE_APROF build/core/binary
+LOCAL_ASFLAGS build/core/binary
+LOCAL_INTERMEDIATE_TARGETS build/core/binary
+LOCAL_GENERATED_SOURCES build/core/binary
+proto_generated_cc_sources build/core/binary
+proto_generated_objects build/core/binary
+yacc_cpps build/core/binary
+yacc_objects build/core/binary
+lex_cpps build/core/binary
+lex_objects build/core/binary
+cpp_objects build/core/binary
+gen_cpp_objects build/core/binary
+gen_s_objects build/core/binary
+c_objects build/core/binary
+gen_c_objects build/core/binary
+objc_sources build/core/binary
+asm_objects_S build/core/binary
+asm_objects_s build/core/binary
+import_includes build/core/binary
+all_objects build/core/binary
+LOCAL_COPY_HEADERS build/core/binary
+LOCAL_COPY_HEADERS_TO build/core/binary
+LOCAL_CC build/core/binary
+LOCAL_CXX build/core/binary
+LOCAL_ASSET_FILES build/core/binary
+LOCAL_NO_DEFAULT_COMPILER_FLAGS build/core/binary
+LOCAL_FORCE_STATIC_EXECUTABLE build/core/binary
+LOCAL_ADDITIONAL_DEPENDENCIES build/core/binary
+LOCAL_JAVACFLAGS build/core/binary
+LOCAL_JAVA_LIBRARIES build/core/binary
+LOCAL_LDFLAGS build/core/binary
+LOCAL_LDLIBS build/core/binary
+LOCAL_NO_MANIFEST build/core/binary
+LOCAL_PACKAGE_NAME build/core/binary
+LOCAL_POST_PROCESS_COMMAND build/core/binary
+LOCAL_PREBUILT_EXECUTABLES build/core/binary
+LOCAL_PREBUILT_LIBS build/core/binary
+LOCAL_UNSTRIPPED_PATH build/core/binary
+LOCAL_MODULE_PATH build/core/binary
+LOCAL_YACCFLAGS build/core/binary
+LOCAL_ADDITIONAL_DEPENDENCIES build/core/binary
+LOCAL_BUILT_MODULE build/core/binary
+LOCAL_HOST build/core/binary
+LOCAL_INSTALLED_MODULE build/core/binary
+LOCAL_REPLACE_VARS build/core/binary
+LOCAL_SCRIPTS build/core/binary
+LOCAL_STRIP_MODULE build/core/binary
+LOCAL_STRIPPABLE_MODULE build/core/binary
+all_libraries build/core/binary
+export_includes build/core/binary
+BUILD_ID build/core/build_id
+INTERNAL_CLEAN_STEPS build/core/cleanbuild
+add-clean-step build/core/cleanbuild
+INTERNAL_CLEAN_BUILD_VERSION build/core/cleanbuild
+CURRENT_CLEAN_BUILD_VERSION build/core/cleanbuild
+previous_build_config_file build/core/cleanbuild
+PREVIOUS_BUILD_CONFIG build/core/cleanbuild
+installclean_files build/core/cleanbuild
+dataclean_files build/core/cleanbuild
+dataclean build/core/cleanbuild
+installclean build/core/cleanbuild
+INTERNAL_CLEAN_BUILD_VERSION build/core/cleanspec
+get-top-dir build/core/cleanspec
+LOCAL_MODULE build/core/clear_vars
+LOCAL_MODULE_PATH build/core/clear_vars
+LOCAL_MODULE_STEM build/core/clear_vars
+LOCAL_DONT_CHECK_MODULE build/core/clear_vars
+LOCAL_CHECKED_MODULE build/core/clear_vars
+LOCAL_BUILT_MODULE build/core/clear_vars
+LOCAL_BUILT_MODULE_STEM build/core/clear_vars
+OVERRIDE_BUILT_MODULE_PATH build/core/clear_vars
+LOCAL_INSTALLED_MODULE build/core/clear_vars
+LOCAL_UNINSTALLABLE_MODULE build/core/clear_vars
+LOCAL_INTERMEDIATE_TARGETS build/core/clear_vars
+LOCAL_UNSTRIPPED_PATH build/core/clear_vars
+LOCAL_MODULE_CLASS build/core/clear_vars
+LOCAL_MODULE_SUFFIX build/core/clear_vars
+LOCAL_PACKAGE_NAME build/core/clear_vars
+LOCAL_OVERRIDES_PACKAGES build/core/clear_vars
+LOCAL_EXPORT_PACKAGE_RESOURCES build/core/clear_vars
+LOCAL_MANIFEST_PACKAGE_NAME build/core/clear_vars
+LOCAL_REQUIRED_MODULES build/core/clear_vars
+LOCAL_ACP_UNAVAILABLE build/core/clear_vars
+LOCAL_MODULE_TAGS build/core/clear_vars
+LOCAL_SRC_FILES build/core/clear_vars
+LOCAL_PREBUILT_OBJ_FILES build/core/clear_vars
+LOCAL_STATIC_JAVA_LIBRARIES build/core/clear_vars
+LOCAL_STATIC_LIBRARIES build/core/clear_vars
+LOCAL_GROUP_STATIC_LIBRARIES build/core/clear_vars
+LOCAL_WHOLE_STATIC_LIBRARIES build/core/clear_vars
+LOCAL_SHARED_LIBRARIES build/core/clear_vars
+LOCAL_IS_HOST_MODULE build/core/clear_vars
+LOCAL_CC build/core/clear_vars
+LOCAL_CXX build/core/clear_vars
+LOCAL_CPP_EXTENSION build/core/clear_vars
+LOCAL_NO_DEFAULT_COMPILER_FLAGS build/core/clear_vars
+LOCAL_NO_FDO_SUPPORT build/core/clear_vars
+LOCAL_ARM_MODE build/core/clear_vars
+LOCAL_YACCFLAGS build/core/clear_vars
+LOCAL_ASFLAGS build/core/clear_vars
+LOCAL_CFLAGS build/core/clear_vars
+LOCAL_CPPFLAGS build/core/clear_vars
+LOCAL_RTTI_FLAG build/core/clear_vars
+LOCAL_C_INCLUDES build/core/clear_vars
+LOCAL_EXPORT_C_INCLUDE_DIRS build/core/clear_vars
+LOCAL_LDFLAGS build/core/clear_vars
+LOCAL_LDLIBS build/core/clear_vars
+LOCAL_AAPT_FLAGS build/core/clear_vars
+LOCAL_AAPT_INCLUDE_ALL_RESOURCES build/core/clear_vars
+LOCAL_SYSTEM_SHARED_LIBRARIES build/core/clear_vars
+LOCAL_PREBUILT_LIBS build/core/clear_vars
+LOCAL_PREBUILT_EXECUTABLES build/core/clear_vars
+LOCAL_PREBUILT_JAVA_LIBRARIES build/core/clear_vars
+LOCAL_PREBUILT_STATIC_JAVA_LIBRARIES build/core/clear_vars
+LOCAL_PREBUILT_STRIP_COMMENTS build/core/clear_vars
+LOCAL_INTERMEDIATE_SOURCES build/core/clear_vars
+LOCAL_INTERMEDIATE_SOURCE_DIR build/core/clear_vars
+LOCAL_JAVACFLAGS build/core/clear_vars
+LOCAL_JAVA_LIBRARIES build/core/clear_vars
+LOCAL_NO_STANDARD_LIBRARIES build/core/clear_vars
+LOCAL_CLASSPATH build/core/clear_vars
+LOCAL_DROIDDOC_USE_STANDARD_DOCLET build/core/clear_vars
+LOCAL_DROIDDOC_SOURCE_PATH build/core/clear_vars
+LOCAL_DROIDDOC_TEMPLATE_DIR build/core/clear_vars
+LOCAL_DROIDDOC_CUSTOM_TEMPLATE_DIR build/core/clear_vars
+LOCAL_DROIDDOC_ASSET_DIR build/core/clear_vars
+LOCAL_DROIDDOC_CUSTOM_ASSET_DIR build/core/clear_vars
+LOCAL_DROIDDOC_OPTIONS build/core/clear_vars
+LOCAL_DROIDDOC_HTML_DIR build/core/clear_vars
+LOCAL_ASSET_FILES build/core/clear_vars
+LOCAL_ASSET_DIR build/core/clear_vars
+LOCAL_RESOURCE_DIR build/core/clear_vars
+LOCAL_JAVA_RESOURCE_DIRS build/core/clear_vars
+LOCAL_JAVA_RESOURCE_FILES build/core/clear_vars
+LOCAL_GENERATED_SOURCES build/core/clear_vars
+LOCAL_COPY_HEADERS_TO build/core/clear_vars
+LOCAL_COPY_HEADERS build/core/clear_vars
+LOCAL_FORCE_STATIC_EXECUTABLE build/core/clear_vars
+LOCAL_ADDITIONAL_DEPENDENCIES build/core/clear_vars
+LOCAL_ENABLE_APROF build/core/clear_vars
+LOCAL_ENABLE_APROF_JNI build/core/clear_vars
+LOCAL_COMPRESS_MODULE_SYMBOLS build/core/clear_vars
+LOCAL_STRIP_MODULE build/core/clear_vars
+LOCAL_JNI_SHARED_LIBRARIES build/core/clear_vars
+LOCAL_JNI_SHARED_LIBRARIES_ABI build/core/clear_vars
+LOCAL_JAR_MANIFEST build/core/clear_vars
+LOCAL_INSTRUMENTATION_FOR build/core/clear_vars
+LOCAL_MANIFEST_INSTRUMENTATION_FOR build/core/clear_vars
+LOCAL_AIDL_INCLUDES build/core/clear_vars
+LOCAL_JARJAR_RULES build/core/clear_vars
+LOCAL_ADDITIONAL_JAVA_DIR build/core/clear_vars
+LOCAL_ALLOW_UNDEFINED_SYMBOLS build/core/clear_vars
+LOCAL_DX_FLAGS build/core/clear_vars
+LOCAL_CERTIFICATE build/core/clear_vars
+LOCAL_SDK_VERSION build/core/clear_vars
+LOCAL_SDK_RES_VERSION build/core/clear_vars
+LOCAL_NDK_STL_VARIANT build/core/clear_vars
+LOCAL_EMMA_INSTRUMENT build/core/clear_vars
+LOCAL_PROGUARD_ENABLED build/core/clear_vars
+LOCAL_PROGUARD_FLAGS build/core/clear_vars
+LOCAL_PROGUARD_FLAG_FILES build/core/clear_vars
+LOCAL_EMMA_COVERAGE_FILTER build/core/clear_vars
+LOCAL_WARNINGS_ENABLE build/core/clear_vars
+LOCAL_FULL_MANIFEST_FILE build/core/clear_vars
+LOCAL_MANIFEST_FILE build/core/clear_vars
+LOCAL_RENDERSCRIPT_INCLUDES build/core/clear_vars
+LOCAL_RENDERSCRIPT_INCLUDES_OVERRIDE build/core/clear_vars
+LOCAL_RENDERSCRIPT_CC build/core/clear_vars
+LOCAL_RENDERSCRIPT_FLAGS build/core/clear_vars
+LOCAL_RENDERSCRIPT_TARGET_API build/core/clear_vars
+LOCAL_BUILD_HOST_DEX build/core/clear_vars
+LOCAL_DEX_PREOPT build/core/clear_vars
+LOCAL_PROTOC_OPTIMIZE_TYPE build/core/clear_vars
+LOCAL_PROTOC_FLAGS build/core/clear_vars
+LOCAL_NO_CRT build/core/clear_vars
+LOCAL_PROPRIETARY_MODULE build/core/clear_vars
+LOCAL_MODULE_OWNER build/core/clear_vars
+LOCAL_CTS_TEST_PACKAGE build/core/clear_vars
+LOCAL_CTS_TEST_RUNNER build/core/clear_vars
+LOCAL_CLANG build/core/clear_vars
+LOCAL_ADDRESS_SANITIZER build/core/clear_vars
+LOCAL_JAR_EXCLUDE_FILES build/core/clear_vars
+LOCAL_LINT_FLAGS build/core/clear_vars
+LOCAL_SOURCE_FILES_ALL_GENERATED build/core/clear_vars
+LOCAL_DONT_DELETE_JAR_META_INF build/core/clear_vars
+ARCH_ARM_HAVE_THUMB_SUPPORT build/core/combo/arch/arm/armv4t
+ARCH_ARM_HAVE_THUMB_INTERWORKING build/core/combo/arch/arm/armv4t
+ARCH_ARM_HAVE_64BIT_DATA build/core/combo/arch/arm/armv4t
+ARCH_ARM_HAVE_HALFWORD_MULTIPLY build/core/combo/arch/arm/armv4t
+ARCH_ARM_HAVE_CLZ build/core/combo/arch/arm/armv4t
+ARCH_ARM_HAVE_FFS build/core/combo/arch/arm/armv4t
+DEFAULT_TARGET_CPU build/core/combo/arch/arm/armv4t
+arch_variant_cflags build/core/combo/arch/arm/armv4t
+ARCH_ARM_HAVE_THUMB_SUPPORT build/core/combo/arch/arm/armv5te
+ARCH_ARM_HAVE_FAST_INTERWORKING build/core/combo/arch/arm/armv5te
+ARCH_ARM_HAVE_64BIT_DATA build/core/combo/arch/arm/armv5te
+ARCH_ARM_HAVE_HALFWORD_MULTIPLY build/core/combo/arch/arm/armv5te
+ARCH_ARM_HAVE_CLZ build/core/combo/arch/arm/armv5te
+ARCH_ARM_HAVE_FFS build/core/combo/arch/arm/armv5te
+arch_variant_cflags build/core/combo/arch/arm/armv5te
+ARCH_ARM_HAVE_THUMB_SUPPORT build/core/combo/arch/arm/armv6-vfp
+ARCH_ARM_HAVE_FAST_INTERWORKING build/core/combo/arch/arm/armv6-vfp
+ARCH_ARM_HAVE_64BIT_DATA build/core/combo/arch/arm/armv6-vfp
+ARCH_ARM_HAVE_HALFWORD_MULTIPLY build/core/combo/arch/arm/armv6-vfp
+ARCH_ARM_HAVE_CLZ build/core/combo/arch/arm/armv6-vfp
+ARCH_ARM_HAVE_FFS build/core/combo/arch/arm/armv6-vfp
+ARCH_ARM_HAVE_VFP build/core/combo/arch/arm/armv6-vfp
+TARGET_ARCH_VARIANT_FPU build/core/combo/arch/arm/armv6-vfp
+arch_variant_cflags build/core/combo/arch/arm/armv6-vfp
+ARCH_ARM_HAVE_THUMB_SUPPORT build/core/combo/arch/arm/armv6j
+ARCH_ARM_HAVE_FAST_INTERWORKING build/core/combo/arch/arm/armv6j
+ARCH_ARM_HAVE_64BIT_DATA build/core/combo/arch/arm/armv6j
+ARCH_ARM_HAVE_HALFWORD_MULTIPLY build/core/combo/arch/arm/armv6j
+ARCH_ARM_HAVE_CLZ build/core/combo/arch/arm/armv6j
+ARCH_ARM_HAVE_FFS build/core/combo/arch/arm/armv6j
+arch_variant_cflags build/core/combo/arch/arm/armv6j
+TARGET_ARCH_VARIANT_FPU build/core/combo/arch/arm/armv7-a-neon
+TARGET_ARCH_VARIANT_CPU build/core/combo/arch/arm/armv7-a-neon
+ARCH_ARM_HAVE_THUMB_SUPPORT build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_FAST_INTERWORKING build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_64BIT_DATA build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_HALFWORD_MULTIPLY build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_CLZ build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_FFS build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_ARMV7A build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_TLS_REGISTER build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_VFP build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_VFP_D32 build/core/combo/arch/arm/armv7-a
+ARCH_ARM_HAVE_NEON build/core/combo/arch/arm/armv7-a
+arch_variant_cflags build/core/combo/arch/arm/armv7-a
+ARCH_MIPS_HAS_FPU build/core/combo/arch/mips/mips32-fp
+ARCH_HAVE_ALIGNED_DOUBLES build/core/combo/arch/mips/mips32-fp
+arch_variant_cflags build/core/combo/arch/mips/mips32-fp
+arch_variant_ldflags build/core/combo/arch/mips/mips32-fp
+arch_variant_cflags build/core/combo/arch/mips/mips32
+arch_variant_ldflags build/core/combo/arch/mips/mips32
+ARCH_MIPS_HAS_FPU build/core/combo/arch/mips/mips32r2-fp
+ARCH_HAVE_ALIGNED_DOUBLES build/core/combo/arch/mips/mips32r2-fp
+arch_variant_cflags build/core/combo/arch/mips/mips32r2-fp
+arch_variant_ldflags build/core/combo/arch/mips/mips32r2-fp
+arch_variant_cflags build/core/combo/arch/mips/mips32r2
+arch_variant_ldflags build/core/combo/arch/mips/mips32r2
+ARCH_MIPS_HAS_DSP build/core/combo/arch/mips/mips32r2dsp-fp
+ARCH_MIPS_DSP_REV build/core/combo/arch/mips/mips32r2dsp-fp
+ARCH_MIPS_HAS_FPU build/core/combo/arch/mips/mips32r2dsp-fp
+ARCH_HAVE_ALIGNED_DOUBLES build/core/combo/arch/mips/mips32r2dsp-fp
+arch_variant_cflags build/core/combo/arch/mips/mips32r2dsp-fp
+arch_variant_ldflags build/core/combo/arch/mips/mips32r2dsp-fp
+ARCH_MIPS_HAS_DSP build/core/combo/arch/mips/mips32r2dsp
+ARCH_MIPS_DSP_REV build/core/combo/arch/mips/mips32r2dsp
+arch_variant_cflags build/core/combo/arch/mips/mips32r2dsp
+arch_variant_ldflags build/core/combo/arch/mips/mips32r2dsp
+ARCH_MIPS_HAS_DSP build/core/combo/arch/mips/mips32r2dspr2-fp
+ARCH_MIPS_DSP_REV build/core/combo/arch/mips/mips32r2dspr2-fp
+ARCH_MIPS_HAS_FPU build/core/combo/arch/mips/mips32r2dspr2-fp
+ARCH_HAVE_ALIGNED_DOUBLES build/core/combo/arch/mips/mips32r2dspr2-fp
+arch_variant_cflags build/core/combo/arch/mips/mips32r2dspr2-fp
+arch_variant_ldflags build/core/combo/arch/mips/mips32r2dspr2-fp
+ARCH_MIPS_HAS_DSP build/core/combo/arch/mips/mips32r2dspr2
+ARCH_MIPS_DSP_REV build/core/combo/arch/mips/mips32r2dspr2
+arch_variant_cflags build/core/combo/arch/mips/mips32r2dspr2
+arch_variant_ldflags build/core/combo/arch/mips/mips32r2dspr2
+ARCH_X86_HAVE_MMX build/core/combo/arch/x86/x86-atom
+ARCH_X86_HAVE_SSE build/core/combo/arch/x86/x86-atom
+ARCH_X86_HAVE_SSE2 build/core/combo/arch/x86/x86-atom
+ARCH_X86_HAVE_SSE3 build/core/combo/arch/x86/x86-atom
+ARCH_X86_HAVE_SSSE3 build/core/combo/arch/x86/x86-atom
+ARCH_X86_HAVE_MOVBE build/core/combo/arch/x86/x86-atom
+ARCH_X86_HAVE_POPCNT build/core/combo/arch/x86/x86-atom
+TARGET_GLOBAL_CFLAGS build/core/combo/arch/x86/x86-atom
+ARCH_X86_HAVE_MMX build/core/combo/arch/x86/x86
+ARCH_X86_HAVE_SSE build/core/combo/arch/x86/x86
+ARCH_X86_HAVE_SSE2 build/core/combo/arch/x86/x86
+ARCH_X86_HAVE_SSE3 build/core/combo/arch/x86/x86
+ARCH_X86_HAVE_SSSE3 build/core/combo/arch/x86/x86
+ARCH_X86_HAVE_MOVBE build/core/combo/arch/x86/x86
+ARCH_X86_HAVE_POPCNT build/core/combo/arch/x86/x86
+TARGET_GLOBAL_CFLAGS build/core/combo/arch/x86/x86
+BUILD_HOST_64bit build/core/combo/HOST_darwin-x86
+HOST_NO_UNDEFINED_LDFLAGS build/core/combo/HOST_darwin-x86
+HOST_CC build/core/combo/HOST_darwin-x86
+HOST_CXX build/core/combo/HOST_darwin-x86
+HOST_AR build/core/combo/HOST_darwin-x86
+HOST_STRIP build/core/combo/HOST_darwin-x86
+HOST_STRIP_COMMAND build/core/combo/HOST_darwin-x86
+HOST_SHLIB_SUFFIX build/core/combo/HOST_darwin-x86
+HOST_JNILIB_SUFFIX build/core/combo/HOST_darwin-x86
+HOST_GLOBAL_CFLAGS build/core/combo/HOST_darwin-x86
+HOST_GLOBAL_ARFLAGS build/core/combo/HOST_darwin-x86
+HOST_CUSTOM_LD_COMMAND build/core/combo/HOST_darwin-x86
+transform-host-o-to-shared-lib-inner build/core/combo/HOST_darwin-x86
+transform-host-o-to-executable-inner build/core/combo/HOST_darwin-x86
+get-file-size build/core/combo/HOST_darwin-x86
+get-file-size build/core/combo/HOST_linux-x86
+HOST_SDK_TOOLCHAIN_PREFIX build/core/combo/HOST_linux-x86
+HOST_CC build/core/combo/HOST_linux-x86
+HOST_CXX build/core/combo/HOST_linux-x86
+HOST_AR build/core/combo/HOST_linux-x86
+BUILD_HOST_64bit build/core/combo/HOST_linux-x86
+HOST_NO_UNDEFINED_LDFLAGS build/core/combo/HOST_linux-x86
+TOOLS_PREFIX build/core/combo/HOST_windows-x86
+TOOLS_EXE_SUFFIX build/core/combo/HOST_windows-x86
+HOST_GLOBAL_CFLAGS build/core/combo/HOST_windows-x86
+HOST_CC build/core/combo/HOST_windows-x86
+HOST_CXX build/core/combo/HOST_windows-x86
+HOST_AR build/core/combo/HOST_windows-x86
+HOST_SHLIB_SUFFIX build/core/combo/HOST_windows-x86
+get-file-size build/core/combo/HOST_windows-x86
+COMMON_JAVAC build/core/combo/javac
+HOST_JAVAC build/core/combo/javac
+TARGET_JAVAC build/core/combo/javac
+combo_os_arch build/core/combo/select
+$(combo_target)CC build/core/combo/select
+$(combo_target)CXX build/core/combo/select
+$(combo_target)AR build/core/combo/select
+$(combo_target)STRIP build/core/combo/select
+$(combo_target)BINDER_MINI build/core/combo/select
+$(combo_target)HAVE_EXCEPTIONS build/core/combo/select
+$(combo_target)HAVE_UNIX_FILE_PATH build/core/combo/select
+$(combo_target)HAVE_WINDOWS_FILE_PATH build/core/combo/select
+$(combo_target)HAVE_RTTI build/core/combo/select
+$(combo_target)HAVE_CALL_STACKS build/core/combo/select
+$(combo_target)HAVE_64BIT_IO build/core/combo/select
+$(combo_target)HAVE_CLOCK_TIMERS build/core/combo/select
+$(combo_target)HAVE_PTHREAD_RWLOCK build/core/combo/select
+$(combo_target)HAVE_STRNLEN build/core/combo/select
+$(combo_target)HAVE_STRERROR_R_STRRET build/core/combo/select
+$(combo_target)HAVE_STRLCPY build/core/combo/select
+$(combo_target)HAVE_STRLCAT build/core/combo/select
+$(combo_target)HAVE_KERNEL_MODULES build/core/combo/select
+$(combo_target)GLOBAL_CFLAGS build/core/combo/select
+$(combo_target)RELEASE_CFLAGS build/core/combo/select
+$(combo_target)GLOBAL_LDFLAGS build/core/combo/select
+$(combo_target)GLOBAL_ARFLAGS build/core/combo/select
+$(combo_target)EXECUTABLE_SUFFIX build/core/combo/select
+CCACHE_COMPILERCHECK build/core/combo/select
+CCACHE_SLOPPINESS build/core/combo/select
+CCACHE_BASEDIR build/core/combo/select
+CCACHE_HOST_TAG build/core/combo/select
+TARGET_ARCH_VARIANT build/core/combo/TARGET_linux-arm
+TARGET_ARCH_SPECIFIC_MAKEFILE build/core/combo/TARGET_linux-arm
+TARGET_TOOLCHAIN_ROOT build/core/combo/TARGET_linux-arm
+TARGET_TOOLS_PREFIX build/core/combo/TARGET_linux-arm
+TARGET_CC build/core/combo/TARGET_linux-arm
+TARGET_CXX build/core/combo/TARGET_linux-arm
+TARGET_AR build/core/combo/TARGET_linux-arm
+TARGET_OBJCOPY build/core/combo/TARGET_linux-arm
+TARGET_LD build/core/combo/TARGET_linux-arm
+TARGET_STRIP build/core/combo/TARGET_linux-arm
+TARGET_STRIP_COMMAND build/core/combo/TARGET_linux-arm
+TARGET_NO_UNDEFINED_LDFLAGS build/core/combo/TARGET_linux-arm
+TARGET_arm_CFLAGS build/core/combo/TARGET_linux-arm
+TARGET_thumb_CFLAGS build/core/combo/TARGET_linux-arm
+FORCE_ARM_DEBUGGING build/core/combo/TARGET_linux-arm
+TARGET_DISABLE_ARM_PIE build/core/combo/TARGET_linux-arm
+TARGET_GLOBAL_CFLAGS build/core/combo/TARGET_linux-arm
+TARGET_RELEASE_CFLAGS build/core/combo/TARGET_linux-arm
+KERNEL_HEADERS build/core/combo/TARGET_linux-arm
+TARGET_C_INCLUDES build/core/combo/TARGET_linux-arm
+TARGET_CRTBEGIN_STATIC_O build/core/combo/TARGET_linux-arm
+$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/crtbegin_static.o build/core/combo/TARGET_linux-arm
+TARGET_CRTBEGIN_DYNAMIC_O build/core/combo/TARGET_linux-arm
+$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/crtbegin_dynamic.o build/core/combo/TARGET_linux-arm
+TARGET_CRTEND_O build/core/combo/TARGET_linux-arm
+TARGET_CRTBEGIN_SO_O build/core/combo/TARGET_linux-arm
+TARGET_CRTEND_SO_O build/core/combo/TARGET_linux-arm
+TARGET_STRIP_MODULE:=true build/core/combo/TARGET_linux-arm
+TARGET_DEFAULT_SYSTEM_SHARED_LIBRARIES build/core/combo/TARGET_linux-arm
+TARGET_CUSTOM_LD_COMMAND build/core/combo/TARGET_linux-arm
+transform-o-to-shared-lib-inner build/core/combo/TARGET_linux-arm
+transform-o-to-executable-inner build/core/combo/TARGET_linux-arm
+transform-o-to-static-executable-inner build/core/combo/TARGET_linux-arm
+TARGET_ARCH_VARIANT build/core/combo/TARGET_linux-mips
+TARGET_TOOLS_PREFIX build/core/combo/TARGET_linux-mips
+TARGET_CC build/core/combo/TARGET_linux-mips
+TARGET_CXX build/core/combo/TARGET_linux-mips
+TARGET_AR build/core/combo/TARGET_linux-mips
+TARGET_OBJCOPY build/core/combo/TARGET_linux-mips
+TARGET_LD build/core/combo/TARGET_linux-mips
+TARGET_STRIP build/core/combo/TARGET_linux-mips
+TARGET_STRIP_COMMAND build/core/combo/TARGET_linux-mips
+TARGET_NO_UNDEFINED_LDFLAGS build/core/combo/TARGET_linux-mips
+TARGET_mips_CFLAGS build/core/combo/TARGET_linux-mips
+TARGET_GLOBAL_CFLAGS build/core/combo/TARGET_linux-mips
+TARGET_ANDROID_CONFIG_CFLAGS build/core/combo/TARGET_linux-mips
+TARGET_GLOBAL_CFLAGS build/core/combo/TARGET_linux-mips
+TARGET_GLOBAL_CFLAGS build/core/combo/TARGET_linux-mips
+KERNEL_HEADERS build/core/combo/TARGET_linux-mips
+TARGET_C_INCLUDES build/core/combo/TARGET_linux-mips
+TARGET_CRTBEGIN_STATIC_O build/core/combo/TARGET_linux-mips
+$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/crtbegin_static.o build/core/combo/TARGET_linux-mips
+TARGET_CRTBEGIN_DYNAMIC_O build/core/combo/TARGET_linux-mips
+$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/crtbegin_dynamic.o build/core/combo/TARGET_linux-mips
+TARGET_CRTEND_O build/core/combo/TARGET_linux-mips
+TARGET_CRTBEGIN_SO_O build/core/combo/TARGET_linux-mips
+TARGET_CRTEND_SO_O build/core/combo/TARGET_linux-mips
+TARGET_STRIP_MODULE:=true build/core/combo/TARGET_linux-mips
+TARGET_DEFAULT_SYSTEM_SHARED_LIBRARIES build/core/combo/TARGET_linux-mips
+TARGET_CUSTOM_LD_COMMAND build/core/combo/TARGET_linux-mips
+transform-o-to-shared-lib-inner build/core/combo/TARGET_linux-mips
+transform-o-to-executable-inner build/core/combo/TARGET_linux-mips
+transform-o-to-static-executable-inner build/core/combo/TARGET_linux-mips
+TARGET_ARCH_VARIANT build/core/combo/TARGET_linux-x86
+TARGET_ARCH_SPECIFIC_MAKEFILE build/core/combo/TARGET_linux-x86
+TARGET_TOOLS_PREFIX build/core/combo/TARGET_linux-x86
+TARGET_CC build/core/combo/TARGET_linux-x86
+TARGET_CXX build/core/combo/TARGET_linux-x86
+TARGET_AR build/core/combo/TARGET_linux-x86
+TARGET_OBJCOPY build/core/combo/TARGET_linux-x86
+TARGET_LD build/core/combo/TARGET_linux-x86
+TARGET_STRIP build/core/combo/TARGET_linux-x86
+TARGET_STRIP_COMMAND build/core/combo/TARGET_linux-x86
+TARGET_NO_UNDEFINED_LDFLAGS build/core/combo/TARGET_linux-x86
+KERNEL_HEADERS build/core/combo/TARGET_linux-x86
+TARGET_GLOBAL_CFLAGS build/core/combo/TARGET_linux-x86
+TARGET_ANDROID_CONFIG_CFLAGS build/core/combo/TARGET_linux-x86
+TARGET_GLOBAL_CFLAGS build/core/combo/TARGET_linux-x86
+TARGET_GLOBAL_CPPFLAGS build/core/combo/TARGET_linux-x86
+TARGET_CRTBEGIN_STATIC_O build/core/combo/TARGET_linux-x86
+$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/crtbegin_static.o build/core/combo/TARGET_linux-x86
+TARGET_CRTBEGIN_DYNAMIC_O build/core/combo/TARGET_linux-x86
+$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/crtbegin_dynamic.o build/core/combo/TARGET_linux-x86
+TARGET_CRTEND_O build/core/combo/TARGET_linux-x86
+TARGET_CRTBEGIN_SO_O build/core/combo/TARGET_linux-x86
+TARGET_CRTEND_SO_O build/core/combo/TARGET_linux-x86
+TARGET_STRIP_MODULE:=true build/core/combo/TARGET_linux-x86
+TARGET_DEFAULT_SYSTEM_SHARED_LIBRARIES build/core/combo/TARGET_linux-x86
+TARGET_CUSTOM_LD_COMMAND build/core/combo/TARGET_linux-x86
+transform-o-to-shared-lib-inner build/core/combo/TARGET_linux-x86
+transform-o-to-executable-inner build/core/combo/TARGET_linux-x86
+transform-o-to-static-executable-inner build/core/combo/TARGET_linux-x86
+SHELL build/core/config
+empty build/core/config
+space build/core/config
+comma build/core/config
+SRC_DOCS build/core/config
+SRC_HEADERS build/core/config
+SRC_HOST_HEADERS build/core/config
+SRC_LIBRARIES build/core/config
+SRC_SERVERS build/core/config
+SRC_TARGET_DIR build/core/config
+SRC_API_DIR build/core/config
+SRC_DROIDDOC_DIR build/core/config
+BUILD_SYSTEM build/core/config
+BUILD_COMBOS build/core/config
+CLEAR_VARS build/core/config
+BUILD_HOST_STATIC_LIBRARY build/core/config
+BUILD_HOST_SHARED_LIBRARY build/core/config
+BUILD_STATIC_LIBRARY build/core/config
+BUILD_RAW_STATIC_LIBRARY build/core/config
+BUILD_SHARED_LIBRARY build/core/config
+BUILD_EXECUTABLE build/core/config
+BUILD_RAW_EXECUTABLE build/core/config
+BUILD_HOST_EXECUTABLE build/core/config
+BUILD_PACKAGE build/core/config
+BUILD_PHONY_PACKAGE build/core/config
+BUILD_HOST_PREBUILT build/core/config
+BUILD_PREBUILT build/core/config
+BUILD_MULTI_PREBUILT build/core/config
+BUILD_JAVA_LIBRARY build/core/config
+BUILD_STATIC_JAVA_LIBRARY build/core/config
+BUILD_HOST_JAVA_LIBRARY build/core/config
+BUILD_DROIDDOC build/core/config
+BUILD_COPY_HEADERS build/core/config
+BUILD_NATIVE_TEST build/core/config
+BUILD_HOST_NATIVE_TEST build/core/config
+SHOW_COMMANDS build/core/config
+COMMON_GLOBAL_CFLAGS build/core/config
+COMMON_RELEASE_CFLAGS build/core/config
+COMMON_GLOBAL_CPPFLAGS build/core/config
+COMMON_RELEASE_CPPFLAGS build/core/config
+COMMON_PACKAGE_SUFFIX build/core/config
+COMMON_JAVA_PACKAGE_SUFFIX build/core/config
+COMMON_ANDROID_PACKAGE_SUFFIX build/core/config
+TARGET_ERROR_FLAGS build/core/config
+TARGET_COMPRESS_MODULE_SYMBOLS build/core/config
+TARGET_SHELL build/core/config
+ANDROID_BUILDSPEC build/core/config
+TARGET_DEVICE_DIR build/core/config
+TARGET_DEVICE_KERNEL_HEADERS build/core/config
+TARGET_BOARD_KERNEL_HEADERS build/core/config
+TARGET_PRODUCT_KERNEL_HEADERS build/core/config
+validate-kernel-headers build/core/config
+TARGET_BOOTLOADER_BOARD_NAME build/core/config
+TARGET_CPU_ABI build/core/config
+TARGET_CPU_ABI2 build/core/config
+select-android-config-h build/core/config
+TARGET_TOOLCHAIN_ROOT build/core/config
+LEX build/core/config
+YACC build/core/config
+DOXYGEN build/core/config
+AAPT build/core/config
+AIDL build/core/config
+PROTOC build/core/config
+ICUDATA build/core/config
+SIGNAPK_JAR build/core/config
+MKBOOTFS build/core/config
+MINIGZIP build/core/config
+MKBOOTIMG build/core/config
+MKYAFFS2 build/core/config
+APICHECK build/core/config
+MKIMAGE build/core/config
+FS_GET_STATS build/core/config
+MKEXT2IMG build/core/config
+MAKE_EXT4FS build/core/config
+MKEXTUSERIMG build/core/config
+MKEXT2BOOTIMG build/core/config
+SIMG2IMG build/core/config
+E2FSCK build/core/config
+MKTARBALL build/core/config
+TUNE2FS build/core/config
+E2FSCK build/core/config
+JARJAR build/core/config
+PROGUARD build/core/config
+JAVATAGS build/core/config
+LLVM_RS_CC build/core/config
+LLVM_RS_LINK build/core/config
+DEXOPT build/core/config
+DEXPREOPT build/core/config
+LINT build/core/config
+ACP build/core/config
+DX build/core/config
+ZIPALIGN build/core/config
+FINDBUGS build/core/config
+EMMA_JAR build/core/config
+YACC_HEADER_SUFFIX build/core/config
+COLUMN build/core/config
+OLD_FLEX build/core/config
+HOST_JDK_TOOLS_JAR build/core/config
+HOST_JDK_IS_64BIT_VERSION build/core/config
+MD5SUM build/core/config
+SED_INPLACE build/core/config
+APICHECK_CLASSPATH build/core/config
+DEFAULT_SYSTEM_DEV_CERTIFICATE build/core/config
+HOST_GLOBAL_CFLAGS build/core/config
+HOST_RELEASE_CFLAGS build/core/config
+HOST_GLOBAL_CPPFLAGS build/core/config
+HOST_RELEASE_CPPFLAGS build/core/config
+HOST_GLOBAL_LD_DIRS build/core/config
+TARGET_GLOBAL_LD_DIRS build/core/config
+HOST_PROJECT_INCLUDES build/core/config
+TARGET_PROJECT_INCLUDES build/core/config
+TARGET_GLOBAL_CFLAGS build/core/config
+TARGET_GLOBAL_CPPFLAGS build/core/config
+numerically_sort build/core/config
+TARGET_AVAILABLE_SDK_VERSIONS build/core/config
+INTERNAL_PLATFORM_API_FILE build/core/config
+TARGET_ARCH build/core/config
+TARGET_PREBUILT_TAG build/core/config
+ALL_DOCS build/core/definitions
+ALL_MODULES build/core/definitions
+ALL_DEFAULT_INSTALLED_MODULES build/core/definitions
+ALL_MODULE_TAGS build/core/definitions
+ALL_MODULE_NAME_TAGS build/core/definitions
+ALL_HOST_INSTALLED_FILES build/core/definitions
+ALL_PREBUILT build/core/definitions
+ALL_GENERATED_SOURCES build/core/definitions
+ALL_C_CPP_ETC_OBJECTS build/core/definitions
+ALL_ORIGINAL_DYNAMIC_BINARIES build/core/definitions
+ALL_SDK_FILES build/core/definitions
+INTERNAL_DALVIK_MODULES build/core/definitions
+ALL_FINDBUGS_FILES build/core/definitions
+ALL_GPL_MODULE_LICENSE_FILES build/core/definitions
+ANDROID_RESOURCE_GENERATED_CLASSES build/core/definitions
+print-vars build/core/definitions
+true-or-empty build/core/definitions
+my-dir build/core/definitions
+all-makefiles-under build/core/definitions
+first-makefiles-under build/core/definitions
+all-subdir-makefiles build/core/definitions
+all-named-subdir-makefiles build/core/definitions
+all-java-files-under build/core/definitions
+all-subdir-java-files build/core/definitions
+all-c-files-under build/core/definitions
+all-subdir-c-files build/core/definitions
+all-Iaidl-files-under build/core/definitions
+all-subdir-Iaidl-files build/core/definitions
+all-logtags-files-under build/core/definitions
+all-proto-files-under build/core/definitions
+all-renderscript-files-under build/core/definitions
+all-html-files-under build/core/definitions
+all-subdir-html-files build/core/definitions
+find-subdir-files build/core/definitions
+find-subdir-subdir-files build/core/definitions
+find-subdir-assets build/core/definitions
+find-other-java-files build/core/definitions
+find-other-html-files build/core/definitions
+find-parent-file build/core/definitions
+add-dependency build/core/definitions
+add-prebuilt-file build/core/definitions
+add-prebuilt-files build/core/definitions
+intermediates-dir-for build/core/definitions
+local-intermediates-dir build/core/definitions
+normalize-libraries build/core/definitions
+normalize-host-libraries build/core/definitions
+normalize-target-libraries build/core/definitions
+module-built-files build/core/definitions
+module-installed-files build/core/definitions
+module-stubs-files build/core/definitions
+doc-timestamp-for build/core/definitions
+java-lib-files build/core/definitions
+java-lib-deps build/core/definitions
+rot13 build/core/definitions
+streq build/core/definitions
+normalize-path-list build/core/definitions
+word-colon build/core/definitions
+collapse-pairs build/core/definitions
+uniq-pairs-by-first-component build/core/definitions
+modules-for-tag-list build/core/definitions
+module-names-for-tag-list build/core/definitions
+get-tagged-modules build/core/definitions
+append-path build/core/definitions
+get-package-overrides build/core/definitions
+pretty build/core/definitions
+dump-module-variables build/core/definitions
+transform-variables build/core/definitions
+transform-d-to-p-args build/core/definitions
+transform-d-to-p build/core/definitions
+transform-l-to-cpp build/core/definitions
+transform-y-to-cpp build/core/definitions
+transform-renderscripts-to-java-and-bc build/core/definitions
+transform-aidl-to-java build/core/definitions
+transform-logtags-to-java build/core/definitions
+transform-proto-to-java build/core/definitions
+transform-proto-to-cc build/core/definitions
+transform-cpp-to-o build/core/definitions
+transform-c-or-s-to-o-no-deps build/core/definitions
+transform-c-to-o-no-deps build/core/definitions
+transform-s-to-o-no-deps build/core/definitions
+transform-c-to-o build/core/definitions
+transform-s-to-o build/core/definitions
+transform-m-to-o-no-deps build/core/definitions
+transform-m-to-o build/core/definitions
+transform-host-cpp-to-o build/core/definitions
+transform-host-c-or-s-to-o-no-deps build/core/definitions
+transform-host-c-to-o-no-deps build/core/definitions
+transform-host-s-to-o-no-deps build/core/definitions
+transform-host-c-to-o build/core/definitions
+transform-host-s-to-o build/core/definitions
+transform-host-m-to-o-no-deps build/core/definitions
+transform-host-m-to-o build/core/definitions
+_concat-if-arg2-not-empty build/core/definitions
+split-long-arguments build/core/definitions
+extract-and-include-target-whole-static-libs build/core/definitions
+transform-o-to-static-lib build/core/definitions
+extract-and-include-host-whole-static-libs build/core/definitions
+transform-host-o-to-static-lib build/core/definitions
+transform-host-o-to-shared-lib-inner build/core/definitions
+transform-host-o-to-shared-lib build/core/definitions
+transform-host-o-to-package build/core/definitions
+transform-o-to-shared-lib-inner build/core/definitions
+transform-o-to-shared-lib build/core/definitions
+transform-o-to-package build/core/definitions
+transform-to-stripped build/core/definitions
+transform-o-to-executable-inner build/core/definitions
+transform-o-to-executable build/core/definitions
+transform-o-to-static-executable-inner build/core/definitions
+transform-o-to-static-executable build/core/definitions
+transform-host-o-to-executable-inner build/core/definitions
+transform-host-o-to-executable build/core/definitions
+create-resource-java-files build/core/definitions
+emit-line build/core/definitions
+dump-words-to-file build/core/definitions
+unzip-jar-files build/core/definitions
+compile-java build/core/definitions
+transform-java-to-classes.jar build/core/definitions
+transform-classes.jar-to-emma build/core/definitions
+transform-classes.jar-to-dex build/core/definitions
+create-empty-package build/core/definitions
+add-assets-to-package build/core/definitions
+add-jni-shared-libs-to-package build/core/definitions
+add-dex-to-package build/core/definitions
+add-java-resources-to-package build/core/definitions
+add-carried-java-resources build/core/definitions
+sign-package build/core/definitions
+align-package build/core/definitions
+install-dex-debug build/core/definitions
+transform-host-java-to-package build/core/definitions
+obfuscate-jar build/core/definitions
+copy-one-header build/core/definitions
+copy-one-file build/core/definitions
+copy-many-files build/core/definitions
+copy-xml-file-checked build/core/definitions
+copy-file-to-target build/core/definitions
+copy-file-to-target-with-cp build/core/definitions
+copy-file-to-target-with-zipalign build/core/definitions
+copy-file-to-target-strip-comments build/core/definitions
+copy-file-to-new-target build/core/definitions
+copy-file-to-new-target-with-cp build/core/definitions
+transform-prebuilt-to-target build/core/definitions
+transform-prebuilt-to-target-with-zipalign build/core/definitions
+transform-prebuilt-to-target-strip-comments build/core/definitions
+transform-host-ranlib-copy-hack build/core/definitions
+proguard-disabled-commands build/core/definitions
+proguard-enabled-commands build/core/definitions
+get-instrumentation-proguard-flags build/core/definitions
+transform-jar-to-proguard build/core/definitions
+transform-generated-source build/core/definitions
+image-size-from-data-size build/core/definitions
+assert-max-file-size build/core/definitions
+assert-max-image-size build/core/definitions
+add-radio-file build/core/definitions
+add-radio-file-checked build/core/definitions
+inherit-package build/core/definitions
+set-inherited-package-variables build/core/definitions
+keep-or-override build/core/definitions
+expand-required-modules build/core/definitions
+check-api build/core/definitions
+__this_file build/core/device
+_device_var_list build/core/device
+dump-device build/core/device
+dump-devices build/core/device
+inherit-device build/core/device
+import-devices build/core/device
+resolve-short-device-name build/core/device
+DEXPREOPT_BOOT_JARS build/core/dex_preopt
+DEXPREOPT_BOOT_JARS_MODULES build/core/dex_preopt
+DEXPREOPT_BUILD_DIR build/core/dex_preopt
+DEXPREOPT_PRODUCT_DIR build/core/dex_preopt
+DEXPREOPT_BOOT_JAR_DIR build/core/dex_preopt
+DEXPREOPT_DEXOPT build/core/dex_preopt
+DEXPREOPT_BOOT_JAR_DIR_FULL_PATH build/core/dex_preopt
+DEXPREOPT_BOOT_ODEXS build/core/dex_preopt
+DEXPREOPT_UNIPROCESSOR build/core/dex_preopt
+dexpreopt-remove-classes.dex build/core/dex_preopt
+dexpreopt-one-file build/core/dex_preopt
+_dexpreopt-boot-jar build/core/dex_preopt
+_build-dexpreopt-boot-jar-dependency-pair build/core/dex_preopt
+_build-dexpreopt-boot-jar-dependency build/core/dex_preopt
+dist build/core/distdir
+DIST_DIR build/core/distdir
+copy-one-dist-file build/core/distdir
+dist-for-goals build/core/distdir
+full_src_files build/core/droiddoc
+out_dir build/core/droiddoc
+full_target build/core/droiddoc
+LOCAL_DROIDDOC_SOURCE_PATH build/core/droiddoc
+LOCAL_DROIDDOC_CUSTOM_TEMPLATE_DIR build/core/droiddoc
+LOCAL_DROIDDOC_ASSET_DIR build/core/droiddoc
+LOCAL_DROIDDOC_CUSTOM_ASSET_DIR build/core/droiddoc
+LOCAL_JAVA_LIBRARIES build/core/droiddoc
+full_java_libs build/core/droiddoc
+full_java_lib_deps build/core/droiddoc
+$(LOCAL_MODULE)-docs build/core/droiddoc
+out_zip build/core/droiddoc
+$(out_zip)] build/core/droiddoc
+ANDROID_BUILD_PATHS build/core/dumpvar
+ANDROID_PREBUILTS build/core/dumpvar
+ANDROID_GCC_PREBUILTS build/core/dumpvar
+$(dumpvar_target) build/core/dumpvar
+LOCAL_UNSTRIPPED_PATH build/core/dynamic_binary
+LOCAL_MODULE_STEM build/core/dynamic_binary
+LOCAL_INSTALLED_MODULE_STEM build/core/dynamic_binary
+LOCAL_BUILT_MODULE_STEM build/core/dynamic_binary
+guessed_intermediates build/core/dynamic_binary
+linked_module build/core/dynamic_binary
+ALL_ORIGINAL_DYNAMIC_BINARIES build/core/dynamic_binary
+LOCAL_INTERMEDIATE_TARGETS build/core/dynamic_binary
+LOCAL_COMPRESS_MODULE_SYMBOLS build/core/dynamic_binary
+LOCAL_STRIP_MODULE build/core/dynamic_binary
+TARGET_PRODUCT build/core/envsetup
+UNAME build/core/envsetup
+HOST_OS build/core/envsetup
+BUILD_OS build/core/envsetup
+HOST_ARCH build/core/envsetup
+BUILD_ARCH build/core/envsetup
+HOST_BUILD_TYPE build/core/envsetup
+HOST_PREBUILT_TAG build/core/envsetup
+TARGET_COPY_OUT_SYSTEM build/core/envsetup
+TARGET_COPY_OUT_DATA build/core/envsetup
+TARGET_COPY_OUT_VENDOR build/core/envsetup
+TARGET_COPY_OUT_ROOT build/core/envsetup
+TARGET_COPY_OUT_RECOVERY build/core/envsetup
+TARGET_OS build/core/envsetup
+TARGET_BUILD_TYPE build/core/envsetup
+OUT_DIR build/core/envsetup
+DEBUG_OUT_DIR build/core/envsetup
+TARGET_OUT_ROOT_release build/core/envsetup
+TARGET_OUT_ROOT_debug build/core/envsetup
+TARGET_OUT_ROOT build/core/envsetup
+HOST_OUT_ROOT_release build/core/envsetup
+HOST_OUT_ROOT_debug build/core/envsetup
+HOST_OUT_ROOT build/core/envsetup
+HOST_OUT_release build/core/envsetup
+HOST_OUT_debug build/core/envsetup
+HOST_OUT build/core/envsetup
+BUILD_OUT build/core/envsetup
+TARGET_PRODUCT_OUT_ROOT build/core/envsetup
+TARGET_COMMON_OUT_ROOT build/core/envsetup
+HOST_COMMON_OUT_ROOT build/core/envsetup
+PRODUCT_OUT build/core/envsetup
+OUT_DOCS build/core/envsetup
+BUILD_OUT build/core/envsetup
+BUILD_OUT_EXECUTABLES build/core/envsetup
+HOST_OUT_EXECUTABLES build/core/envsetup
+HOST_OUT_SHARED_LIBRARIES build/core/envsetup
+HOST_OUT_JAVA_LIBRARIES build/core/envsetup
+HOST_OUT_SDK_ADDON build/core/envsetup
+HOST_OUT_INTERMEDIATES build/core/envsetup
+HOST_OUT_HEADERS build/core/envsetup
+HOST_OUT_INTERMEDIATE_LIBRARIES build/core/envsetup
+HOST_OUT_NOTICE_FILES build/core/envsetup
+HOST_OUT_COMMON_INTERMEDIATES build/core/envsetup
+TARGET_OUT_INTERMEDIATES build/core/envsetup
+TARGET_OUT_HEADERS:= build/core/envsetup
+TARGET_OUT_INTERMEDIATE_LIBRARIES build/core/envsetup
+TARGET_OUT_COMMON_INTERMEDIATES build/core/envsetup
+TARGET_OUT build/core/envsetup
+TARGET_OUT_EXECUTABLES build/core/envsetup
+TARGET_OUT_OPTIONAL_EXECUTABLES:= build/core/envsetup
+TARGET_OUT_SHARED_LIBRARIES:= build/core/envsetup
+TARGET_OUT_JAVA_LIBRARIES:= build/core/envsetup
+TARGET_OUT_APPS:= build/core/envsetup
+TARGET_OUT_KEYLAYOUT build/core/envsetup
+TARGET_OUT_KEYCHARS build/core/envsetup
+TARGET_OUT_ETC build/core/envsetup
+TARGET_OUT_NOTICE_FILES build/core/envsetup
+TARGET_OUT_FAKE build/core/envsetup
+TARGET_OUT_DATA build/core/envsetup
+TARGET_OUT_DATA_EXECUTABLES:= build/core/envsetup
+TARGET_OUT_DATA_SHARED_LIBRARIES:= build/core/envsetup
+TARGET_OUT_DATA_JAVA_LIBRARIES:= build/core/envsetup
+TARGET_OUT_DATA_APPS:= build/core/envsetup
+TARGET_OUT_DATA_KEYLAYOUT build/core/envsetup
+TARGET_OUT_DATA_KEYCHARS build/core/envsetup
+TARGET_OUT_DATA_ETC build/core/envsetup
+TARGET_OUT_DATA_NATIVE_TESTS build/core/envsetup
+TARGET_OUT_CACHE build/core/envsetup
+TARGET_OUT_VENDOR build/core/envsetup
+TARGET_OUT_VENDOR_EXECUTABLES:= build/core/envsetup
+TARGET_OUT_VENDOR_OPTIONAL_EXECUTABLES:= build/core/envsetup
+TARGET_OUT_VENDOR_SHARED_LIBRARIES:= build/core/envsetup
+TARGET_OUT_VENDOR_JAVA_LIBRARIES:= build/core/envsetup
+TARGET_OUT_VENDOR_APPS:= build/core/envsetup
+TARGET_OUT_VENDOR_ETC build/core/envsetup
+TARGET_OUT_UNSTRIPPED build/core/envsetup
+TARGET_OUT_EXECUTABLES_UNSTRIPPED build/core/envsetup
+TARGET_OUT_SHARED_LIBRARIES_UNSTRIPPED build/core/envsetup
+TARGET_ROOT_OUT_UNSTRIPPED build/core/envsetup
+TARGET_ROOT_OUT_SBIN_UNSTRIPPED build/core/envsetup
+TARGET_ROOT_OUT_BIN_UNSTRIPPED build/core/envsetup
+TARGET_ROOT_OUT build/core/envsetup
+TARGET_ROOT_OUT_BIN build/core/envsetup
+TARGET_ROOT_OUT_SBIN build/core/envsetup
+TARGET_ROOT_OUT_ETC build/core/envsetup
+TARGET_ROOT_OUT_USR build/core/envsetup
+TARGET_RECOVERY_OUT build/core/envsetup
+TARGET_RECOVERY_ROOT_OUT build/core/envsetup
+TARGET_SYSLOADER_OUT build/core/envsetup
+TARGET_SYSLOADER_ROOT_OUT build/core/envsetup
+TARGET_SYSLOADER_SYSTEM_OUT build/core/envsetup
+TARGET_INSTALLER_OUT build/core/envsetup
+TARGET_INSTALLER_DATA_OUT build/core/envsetup
+TARGET_INSTALLER_ROOT_OUT build/core/envsetup
+TARGET_INSTALLER_SYSTEM_OUT build/core/envsetup
+TARGET_FACTORY_RAMDISK_OUT build/core/envsetup
+COMMON_MODULE_CLASSES build/core/envsetup
+DIST_DIR build/core/envsetup
+PRINT_BUILD_CONFIG build/core/envsetup
+LOCAL_MODULE_CLASS build/core/executable
+LOCAL_MODULE_SUFFIX build/core/executable
+LOCAL_ENABLE_APROF build/core/executable
+help build/core/help
+out build/core/help
+LOCAL_IS_HOST_MODULE build/core/host_executable
+LOCAL_MODULE_CLASS build/core/host_executable
+LOCAL_MODULE_SUFFIX build/core/host_executable
+$(LOCAL_BUILT_MODULE) build/core/host_executable
+LOCAL_MODULE_CLASS build/core/host_java_library
+LOCAL_MODULE_SUFFIX build/core/host_java_library
+LOCAL_IS_HOST_MODULE build/core/host_java_library
+LOCAL_BUILT_MODULE_STEM build/core/host_java_library
+LOCAL_INTERMEDIATE_SOURCE_DIR build/core/host_java_library
+LOCAL_BUILD_HOST_DEX build/core/host_java_library
+LOCAL_MODULE_CLASS build/core/host_shared_library
+LOCAL_MODULE_SUFFIX build/core/host_shared_library
+OVERRIDE_BUILT_MODULE_PATH build/core/host_shared_library
+LOCAL_MODULE_CLASS build/core/host_static_library
+LOCAL_MODULE_SUFFIX build/core/host_static_library
+LOCAL_UNINSTALLABLE_MODULE build/core/host_static_library
+LOCAL_IS_HOST_MODULE build/core/host_static_library
+LOCAL_SDK_VERSION build/core/java
+PDK_BUILD_SDK_VERSION build/core/java
+LOCAL_NO_STANDARD_LIBRARIES build/core/java
+TARGET_BUILD_APPS build/core/java
+LOCAL_JAVA_LIBRARIES build/core/java
+LOCAL_PROGUARD_ENABLED build/core/java
+LOCAL_INTERMEDIATE_TARGETS build/core/java
+LOCAL_INTERMEDIATE_SOURCE_DIR build/core/java
+LOCAL_RENDERSCRIPT_CC build/core/java
+LOCAL_RENDERSCRIPT_INCLUDES build/core/java
+ALL_MODULES.$(LOCAL_MODULE).CHECKED build/core/java
+LOCAL_EMMA_INSTRUMENT build/core/java
+LOCAL_EMMA_COVERAGE_FILTER build/core/java
+ALL_MODULES.$(LOCAL_MODULE).PROGUARD_ENABLED build/core/java
+ALL_FINDBUGS_FILES build/core/java
+LOCAL_MODULE_SUFFIX build/core/java_library
+LOCAL_MODULE_CLASS build/core/java_library
+LOCAL_BUILT_MODULE_STEM build/core/java_library
+LOCAL_DEX_PREOPT build/core/java_library
+LOCAL_EMMA_INSTRUMENT build/core/java_library
+GRANDFATHERED_ALL_PREBUILT build/core/legacy_prebuilts
+LINARO_COMPILERCHECK_CC build/core/linaro_compilerchecks
+try-run build/core/linaro_compilerchecks
+cc-version build/core/linaro_compilerchecks
+cc-ifversion build/core/linaro_compilerchecks
+cc-option build/core/linaro_compilerchecks
+CLANG build/core/llvm_config
+CLANG_CXX build/core/llvm_config
+LLVM_AS build/core/llvm_config
+LLVM_LINK build/core/llvm_config
+do-clang-flags-subst build/core/llvm_config
+clang-flags-subst build/core/llvm_config
+CLANG_CONFIG_EXTRA_CFLAGS build/core/llvm_config
+CLANG_CONFIG_UNKNOWN_CFLAGS build/core/llvm_config
+CLANG_CONFIG_EXTRA_CFLAGS build/core/llvm_config
+CLANG_CONFIG_EXTRA_LDFLAGS build/core/llvm_config
+CLANG_CONFIG_UNKNOWN_CFLAGS build/core/llvm_config
+CLANG_CONFIG_EXTRA_TARGET_C_INCLUDES build/core/llvm_config
+TARGET_GLOBAL_CLANG_FLAGS build/core/llvm_config
+HOST_GLOBAL_CLANG_FLAGS build/core/llvm_config
+TARGET_arm_CLANG_CFLAGS build/core/llvm_config
+TARGET_thumb_CLANG_CFLAGS build/core/llvm_config
+ADDRESS_SANITIZER_CONFIG_EXTRA_CFLAGS build/core/llvm_config
+ADDRESS_SANITIZER_CONFIG_EXTRA_LDFLAGS build/core/llvm_config
+ADDRESS_SANITIZER_CONFIG_EXTRA_SHARED_LIBRARIES build/core/llvm_config
+ADDRESS_SANITIZER_CONFIG_EXTRA_STATIC_LIBRARIES build/core/llvm_config
+ADDRESS_SANITIZER_CONFIG_EXTRA_STATIC_LIBRARIES build/core/llvm_config
+COMPILER_RT_CONFIG_EXTRA_STATIC_LIBRARIES build/core/llvm_config
+SHELL build/core/main
+PWD build/core/main
+TOP build/core/main
+TOPDIR build/core/main
+BUILD_SYSTEM build/core/main
+droid build/core/main
+[FORCE] build/core/main
+BUILD_EMULATOR build/core/main
+INTERNAL_MODIFIER_TARGETS build/core/main
+showcommands build/core/main
+incrementaljavac build/core/main
+all build/core/main
+checkbuild build/core/main
+ENABLE_INCREMENTALJAVAC build/core/main
+TARGET_BUILD_VARIANT build/core/main
+TARGET_BUILD_JAVA_SUPPORT_LEVEL build/core/main
+is_sdk_build build/core/main
+HAVE_SELINUX build/core/main
+user_variant build/core/main
+tags_to_install build/core/main
+DISABLE_DEXPREOPT build/core/main
+WITH_DEXPREOPT build/core/main
+ADDITIONAL_DEFAULT_PROPERTIES build/core/main
+enable_target_debugging build/core/main
+INCLUDE_TEST_OTA_KEYS build/core/main
+sdk_repo build/core/main
+should-install-to-system build/core/main
+dont_bother build/core/main
+SDK_ONLY build/core/main
+subdirs build/core/main
+FULL_BUILD build/core/main
+stash_product_vars build/core/main
+ONE_SHOT_MAKEFILE build/core/main
+CUSTOM_MODULES build/core/main
+subdir_makefiles build/core/main
+add-required-deps build/core/main
+product_MODULES build/core/main
+product_FILES build/core/main
+debug_MODULES build/core/main
+eng_MODULES build/core/main
+tests_MODULES build/core/main
+modules_to_install build/core/main
+LOCAL_OVERRIDES_PACKAGES build/core/main
+overridden_packages build/core/main
+target_gnu_MODULES build/core/main
+modules_to_check build/core/main
+prebuilt build/core/main
+all_copied_headers build/core/main
+ALL_C_CPP_ETC_OBJECTS build/core/main
+files build/core/main
+ramdisk build/core/main
+factory_ramdisk build/core/main
+factory_bundle build/core/main
+systemtarball build/core/main
+boottarball build/core/main
+userdataimage build/core/main
+userdatatarball build/core/main
+cacheimage build/core/main
+bootimage build/core/main
+droidcore build/core/main
+dist_files build/core/main
+unbundled_build_modules build/core/main
+apps_only build/core/main
+all_modules build/core/main
+docs build/core/main
+sdk build/core/main
+lintall build/core/main
+samplecode build/core/main
+findbugs build/core/main
+clean build/core/main
+clobber build/core/main
+modules build/core/main
+nothing build/core/main
+CL_RED build/core/Makefile
+FILE_NAME_TAG build/core/Makefile
+is_tests_build build/core/Makefile
+check-product-copy-files build/core/Makefile
+unique_product_copy_files_pairs build/core/Makefile
+unique_product_copy_files_destinations build/core/Makefile
+ALL_DOCS build/core/Makefile
+INSTALLED_DEFAULT_PROP_TARGET build/core/Makefile
+ALL_DEFAULT_INSTALLED_MODULES build/core/Makefile
+ADDITIONAL_DEFAULT_PROPERTIES build/core/Makefile
+$(INSTALLED_DEFAULT_PROP_TARGET) build/core/Makefile
+INSTALLED_BUILD_PROP_TARGET build/core/Makefile
+ADDITIONAL_BUILD_PROPERTIES build/core/Makefile
+BUILD_VERSION_TAGS build/core/Makefile
+build_desc build/core/Makefile
+BUILD_FINGERPRINT build/core/Makefile
+BUILD_DISPLAY_ID build/core/Makefile
+product_property_override_locale_language build/core/Makefile
+product_property_overrides_locale_region build/core/Makefile
+default-locale build/core/Makefile
+default-locale-language build/core/Makefile
+default-locale-region build/core/Makefile
+BUILDINFO_SH build/core/Makefile
+$(INSTALLED_BUILD_PROP_TARGET) build/core/Makefile
+sdk_build_prop_remove build/core/Makefile
+INSTALLED_SDK_BUILD_PROP_TARGET build/core/Makefile
+$(INSTALLED_SDK_BUILD_PROP_TARGET) build/core/Makefile
+PACKAGE_STATS_FILE build/core/Makefile
+PACKAGES_TO_STAT build/core/Makefile
+$(PACKAGE_STATS_FILE) build/core/Makefile
+_apkcerts_echo_with_newline build/core/Makefile
+APKCERTS_FILE build/core/Makefile
+$(APKCERTS_FILE) build/core/Makefile
+apkcerts-list build/core/Makefile
+CREATE_MODULE_INFO_FILE build/core/Makefile
+MODULE_INFO_FILE build/core/Makefile
+DEFAULT_KEY_CERT_PAIR build/core/Makefile
+OTA_PACKAGE_SIGNING_KEY build/core/Makefile
+systemimage build/core/Makefile
+event-log-tags build/core/Makefile
+all_event_log_tags_file build/core/Makefile
+event_log_tags_file build/core/Makefile
+all_event_log_tags_src build/core/Makefile
+pdk_fusion_log_tags_file build/core/Makefile
+$(all_event_log_tags_file) build/core/Makefile
+$(event_log_tags_file) build/core/Makefile
+INTERNAL_RAMDISK_FILES build/core/Makefile
+BUILT_RAMDISK_TARGET build/core/Makefile
+INSTALLED_RAMDISK_TARGET build/core/Makefile
+$(INSTALLED_RAMDISK_TARGET) build/core/Makefile
+INTERNAL_BOOTIMAGE_ARGS build/core/Makefile
+INTERNAL_BOOTIMAGE_FILES build/core/Makefile
+BOARD_KERNEL_CMDLINE build/core/Makefile
+BOARD_KERNEL_BASE build/core/Makefile
+BOARD_FORCE_RAMDISK_ADDRESS build/core/Makefile
+BOARD_MKBOOTIMG_ARGS build/core/Makefile
+INSTALLED_BOOTIMAGE_TARGET build/core/Makefile
+TARGET_BOOTIMAGE_USE_EXT2 build/core/Makefile
+tmp_dir_for_image build/core/Makefile
+$(INSTALLED_BOOTIMAGE_TARGET) build/core/Makefile
+notice_files build/core/Makefile
+combine-notice-files build/core/Makefile
+target_notice_file_txt build/core/Makefile
+target_notice_file_html build/core/Makefile
+target_notice_file_html_gz build/core/Makefile
+tools_notice_file_txt build/core/Makefile
+tools_notice_file_html build/core/Makefile
+kernel_notice_file build/core/Makefile
+pdk_fusion_notice_files build/core/Makefile
+$(target_notice_file_html_gz) build/core/Makefile
+installed_notice_html_gz build/core/Makefile
+$(installed_notice_html_gz) build/core/Makefile
+$(kernel_notice_file) build/core/Makefile
+otacerts build/core/Makefile
+INTERNAL_USERIMAGES_EXT_VARIANT build/core/Makefile
+INTERNAL_USERIMAGES_USE_EXT build/core/Makefile
+TARGET_USERIMAGES_USE_EXT2 build/core/Makefile
+TARGET_USERIMAGES_USE_EXT3 build/core/Makefile
+TARGET_USERIMAGES_USE_EXT4 build/core/Makefile
+TARGET_USERIMAGES_SPARSE_EXT_DISABLED build/core/Makefile
+INTERNAL_USERIMAGES_SPARSE_EXT_FLAG build/core/Makefile
+INTERNAL_USERIMAGES_DEPS build/core/Makefile
+INTERNAL_USERIMAGES_BINARY_PATHS build/core/Makefile
+generate-userimage-prop-dictionary build/core/Makefile
+INTERNAL_UTILITY_FILES build/core/Makefile
+utilities build/core/Makefile
+INSTALLED_RECOVERYIMAGE_TARGET build/core/Makefile
+TARGET_RECOVERY_INITRC build/core/Makefile
+recovery_initrc build/core/Makefile
+BOARD_USES_RECOVERY_CHARGEMODE build/core/Makefile
+TARGET_PREBUILT_RECOVERY_KERNEL build/core/Makefile
+recovery_kernel build/core/Makefile
+recovery_uncompressed_ramdisk build/core/Makefile
+recovery_ramdisk build/core/Makefile
+recovery_build_prop build/core/Makefile
+recovery_binary build/core/Makefile
+recovery_resources_common build/core/Makefile
+recovery_resources_private build/core/Makefile
+recovery_root_private build/core/Makefile
+recovery_resource_deps build/core/Makefile
+TARGET_RECOVERY_FSTAB build/core/Makefile
+recovery_fstab build/core/Makefile
+RECOVERY_RESOURCE_ZIP build/core/Makefile
+INTERNAL_RECOVERYIMAGE_ARGS build/core/Makefile
+BOARD_KERNEL_CMDLINE build/core/Makefile
+BOARD_KERNEL_BASE build/core/Makefile
+BOARD_KERNEL_PAGESIZE build/core/Makefile
+BOARD_FORCE_RAMDISK_ADDRESS build/core/Makefile
+INTERNAL_RECOVERY_FILES build/core/Makefile
+OTA_PUBLIC_KEYS build/core/Makefile
+PRODUCT_EXTRA_RECOVERY_KEYS build/core/Makefile
+RECOVERY_INSTALL_OTA_KEYS build/core/Makefile
+DUMPKEY_JAR build/core/Makefile
+$(RECOVERY_INSTALL_OTA_KEYS) build/core/Makefile
+TARGET_RECOVERY_ROOT_TIMESTAMP build/core/Makefile
+$(TARGET_RECOVERY_ROOT_TIMESTAMP) build/core/Makefile
+$(recovery_uncompressed_ramdisk) build/core/Makefile
+$(recovery_ramdisk) build/core/Makefile
+BOARD_CUSTOM_BOOTIMG_MK build/core/Makefile
+$(INSTALLED_RECOVERYIMAGE_TARGET) build/core/Makefile
+$(RECOVERY_RESOURCE_ZIP) build/core/Makefile
+recoveryimage build/core/Makefile
+INSTALLED_RECOVERYZIP_TARGET build/core/Makefile
+$(INSTALLED_RECOVERYZIP_TARGET) build/core/Makefile
+recoveryzip build/core/Makefile
+BOARD_NAND_PAGE_SIZE build/core/Makefile
+BOARD_NAND_SPARE_SIZE build/core/Makefile
+mkyaffs2_extra_flags build/core/Makefile
+PDK_FUSION_SYSIMG_FILES build/core/Makefile
+INTERNAL_SYSTEMIMAGE_FILES build/core/Makefile
+FULL_SYSTEMIMAGE_DEPS build/core/Makefile
+INSTALLED_FILES_FILE build/core/Makefile
+$(INSTALLED_FILES_FILE) build/core/Makefile
+installed-file-list build/core/Makefile
+systemimage_intermediates build/core/Makefile
+BUILT_SYSTEMIMAGE build/core/Makefile
+build-systemimage-target build/core/Makefile
+$(BUILT_SYSTEMIMAGE) build/core/Makefile
+INSTALLED_SYSTEMIMAGE build/core/Makefile
+SYSTEMIMAGE_SOURCE_DIR build/core/Makefile
+RECOVERY_FROM_BOOT_PATCH build/core/Makefile
+$(RECOVERY_FROM_BOOT_PATCH) build/core/Makefile
+$(INSTALLED_SYSTEMIMAGE) build/core/Makefile
+systemimage build/core/Makefile
+systemimage-nodeps build/core/Makefile
+build-systemtarball-target build/core/Makefile
+SYSTEM_TARBALL_FORMAT build/core/Makefile
+system_tar build/core/Makefile
+INSTALLED_SYSTEMTARBALL_TARGET build/core/Makefile
+INSTALLED_SYSTEMTARBALL_TARGET build/core/Makefile
+systemtarball-nodeps build/core/Makefile
+stnod build/core/Makefile
+PLATFORM_ZIP_ADD_JAVA build/core/Makefile
+INSTALLED_PLATFORM_ZIP build/core/Makefile
+platform build/core/Makefile
+platform-java build/core/Makefile
+build-boottarball-target build/core/Makefile
+BOOT_TARBALL_FORMAT build/core/Makefile
+boot_tar build/core/Makefile
+INSTALLED_BOOTTARBALL_TARGET build/core/Makefile
+(INSTALLED_BOOTTARBALL_TARGET) build/core/Makefile
+boottarball-nodeps build/core/Makefile
+btnod build/core/Makefile
+INTERNAL_USERDATAIMAGE_FILES build/core/Makefile
+userdataimage_intermediates build/core/Makefile
+BUILT_USERDATAIMAGE_TARGET build/core/Makefile
+build-userdataimage-target build/core/Makefile
+INSTALLED_USERDATAIMAGE_TARGET build/core/Makefile
+$(INSTALLED_USERDATAIMAGE_TARGET) build/core/Makefile
+userdataimage-nodeps build/core/Makefile
+build-userdatatarball-target build/core/Makefile
+userdata_tar build/core/Makefile
+INSTALLED_USERDATATARBALL_TARGET build/core/Makefile
+$(INSTALLED_USERDATATARBALL_TARGET) build/core/Makefile
+userdatatarball-nodeps build/core/Makefile
+BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE build/core/Makefile
+INTERNAL_CACHEIMAGE_FILES build/core/Makefile
+cacheimage_intermediates build/core/Makefile
+$(BUILT_CACHEIMAGE_TARGET) build/core/Makefile
+build-cacheimage-target build/core/Makefile
+$(INSTALLED_CACHEIMAGE_TARGET) build/core/Makefile
+cacheimage-nodeps build/core/Makefile
+TARGET_USE_DISKINSTALLER build/core/Makefile
+DISTTOOLS build/core/Makefile
+OTATOOLS build/core/Makefile
+otatools build/core/Makefile
+UNPACKBOOTIMG build/core/Makefile
+unpackbootimg build/core/Makefile
+BUILT_TARGET_FILES_PACKAGE build/core/Makefile
+package_files-copy-root build/core/Makefile
+built_ota_tools build/core/Makefile
+TARGET_RELEASETOOLS_EXTENSIONS build/core/Makefile
+$(BUILT_TARGET_FILES_PACKAGE) build/core/Makefile
+target-files-package build/core/Makefile
+INTERNAL_OTA_PACKAGE_TARGET build/core/Makefile
+OTA_FROM_TARGET_SCRIPT build/core/Makefile
+TARGET_RELEASETOOL_OTA_FROM_TARGET_SCRIPT build/core/Makefile
+TARGET_OTA_ASSERT_DEVICE build/core/Makefile
+$(INTERNAL_OTA_PACKAGE_TARGET) build/core/Makefile
+CM_TARGET_PACKAGE build/core/Makefile
+otapackage build/core/Makefile
+bacon build/core/Makefile
+INTERNAL_UPDATE_PACKAGE_TARGET build/core/Makefile
+IMG_FROM_TARGET_SCRIPT build/core/Makefile
+TARGET_RELEASETOOL_IMG_FROM_TARGET_SCRIPT build/core/Makefile
+$(INTERNAL_UPDATE_PACKAGE_TARGET) build/core/Makefile
+updatepackage build/core/Makefile
+BUILT_TESTS_ZIP_PACKAGE build/core/Makefile
+$(BUILT_TESTS_ZIP_PACKAGE) build/core/Makefile
+tests-zip-package build/core/Makefile
+tests-build-target build/core/Makefile
+tests build/core/Makefile
+SYMBOLS_ZIP build/core/Makefile
+$(SYMBOLS_ZIP) build/core/Makefile
+APPS_ZIP build/core/Makefile
+$(APPS_ZIP) build/core/Makefile
+EMMA_META_ZIP build/core/Makefile
+$(EMMA_META_ZIP) build/core/Makefile
+dalvikfiles build/core/Makefile
+INSTALLED_QEMU_KERNEL_TARGET build/core/Makefile
+$(INSTALLED_QEMU_KERNEL_TARGET) build/core/Makefile
+INTERNAL_EMULATOR_PACKAGE_FILES build/core/Makefile
+INTERNAL_EMULATOR_PACKAGE_TARGET build/core/Makefile
+$(INTERNAL_EMULATOR_PACKAGE_TARGET) build/core/Makefile
+goldfish build/core/Makefile
+sdk_dir build/core/Makefile
+sdk_name build/core/Makefile
+INTERNAL_SDK_HOST_OS_NAME build/core/Makefile
+sdk_dep_file build/core/Makefile
+ATREE_FILES build/core/Makefile
+atree_dir build/core/Makefile
+sdk_tools_atree_files build/core/Makefile
+sdk_atree_files build/core/Makefile
+INTERNAL_SDK_TARGET build/core/Makefile
+$(INTERNAL_SDK_TARGET) build/core/Makefile
+MAIN_SDK_NAME build/core/Makefile
+MAIN_SDK_DIR build/core/Makefile
+MAIN_SDK_ZIP build/core/Makefile
+win_sdk build/core/Makefile
+winsdk-tools build/core/Makefile
+winsdk-coretools build/core/Makefile
+INTERNAL_FINDBUGS_XML_TARGET build/core/Makefile
+INTERNAL_FINDBUGS_HTML_TARGET build/core/Makefile
+$(INTERNAL_FINDBUGS_XML_TARGET) build/core/Makefile
+$(INTERNAL_FINDBUGS_HTML_TARGET) build/core/Makefile
+prebuilt_static_libs build/core/multi_prebuilt
+prebuilt_shared_libs build/core/multi_prebuilt
+prebuilt_executables build/core/multi_prebuilt
+prebuilt_java_libraries build/core/multi_prebuilt
+prebuilt_static_java_libraries build/core/multi_prebuilt
+prebuilt_is_host build/core/multi_prebuilt
+prebuilt_module_tags build/core/multi_prebuilt
+prebuilt_strip_module build/core/multi_prebuilt
+auto-prebuilt-boilerplate build/core/multi_prebuilt
+LOCAL_CFLAGS build/core/native_test
+LOCAL_C_INCLUDES build/core/native_test
+LOCAL_STATIC_LIBRARIES build/core/native_test
+LOCAL_SHARED_LIBRARIES build/core/native_test
+LOCAL_MODULE_PATH build/core/native_test
+clear-var-list build/core/node_fns
+copy-var-list build/core/node_fns
+move-var-list build/core/node_fns
+uniq-word build/core/node_fns
+get-inherited-nodes build/core/node_fns
+import-nodes build/core/node_fns
+LOCAL_PACKAGE_NAME build/core/package
+COMMON_ANDROID_PACKAGE_SUFFIX build/core/package
+LOCAL_MANIFEST_FILE build/core/package
+LOCAL_FULL_MANIFEST_FILE build/core/package
+LOCAL_MODULE_CLASS build/core/package
+LOCAL_MODULE_TAGS build/core/package
+LOCAL_AAPT_FLAGS build/core/package
+LOCAL_ASSET_DIR build/core/package
+LOCAL_RESOURCE_DIR build/core/package
+PRODUCT_PACKAGE_OVERLAYS build/core/package
+DEVICE_PACKAGE_OVERLAYS build/core/package
+LOCAL_RESOURCE_DIR build/core/package
+LOCAL_PROGUARD_ENABLED build/core/package
+LOCAL_DEX_PREOPT build/core/package
+LOCAL_CERTIFICATE build/core/package
+lint-$(LOCAL_PACKAGE_NAME) build/core/package
+lintall build/core/package
+pathmap_INCL build/core/pathmap
+include-path-for build/core/pathmap
+JNI_H_INCLUDE build/core/pathmap
+FRAMEWORKS_BASE_SUBDIRS build/core/pathmap
+FRAMEWORKS_BASE_JAVA_SRC_DIRS build/core/pathmap
+FRAMEWORKS_SUPPORT_SUBDIRS build/core/pathmap
+FRAMEWORKS_SUPPORT_JAVA_SRC_DIRS build/core/pathmap
+pdk_fusion build/core/pdk_config
+PDK_FUSION_PLATFORM_ZIP build/core/pdk_config
+PDK_PLATFORM_JAVA_ZIP_JAVA_LIB_DIR build/core/pdk_config
+PDK_PLATFORM_JAVA_ZIP_CONTENTS build/core/pdk_config
+ALL_PDK_FUSION_FILES build/core/pdk_config
+LOCAL_CERTIFICATE build/core/prebuilt
+get-product-makefiles build/core/product
+get-all-product-makefiles build/core/product
+_product_var_list build/core/product
+dump-product build/core/product
+dump-products build/core/product
+inherit-product build/core/product
+inherit-product-if-exists build/core/product
+import-products build/core/product
+check-all-products build/core/product
+resolve-short-product-name build/core/product
+_product_stash_var_list build/core/product
+stash-product-vars build/core/product
+assert-product-vars build/core/product
+add-to-product-copy-files-if-exists build/core/product
+is-c-identifier build/core/product_config
+SED_EXTENDED build/core/product_config
+find-copy-subdir-files build/core/product_config
+INTERNAL_VALID_VARIANTS build/core/product_config
+PRODUCT_LOCALES build/core/product_config
+PRODUCT_AAPT_CONFIG build/core/product_config
+PRODUCT_AAPT_PREF_CONFIG build/core/product_config
+PRODUCT_BRAND build/core/product_config
+PRODUCT_MODEL build/core/product_config
+PRODUCT_MANUFACTURER build/core/product_config
+TARGET_AAPT_CHARACTERISTICS build/core/product_config
+PRODUCT_DEFAULT_WIFI_CHANNELS build/core/product_config
+PRODUCT_DEFAULT_DEV_CERTIFICATE build/core/product_config
+PRODUCT_COPY_FILES build/core/product_config
+PRODUCT_PROPERTY_OVERRIDES build/core/product_config
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES build/core/product_config
+PRODUCT_BUILD_PROP_OVERRIDES build/core/product_config
+PRODUCT_PACKAGE_OVERLAYS build/core/product_config
+DEVICE_PACKAGE_OVERLAYS build/core/product_config
+PRODUCT_TAGS build/core/product_config
+PRODUCT_VENDOR_KERNEL_HEADERS build/core/product_config
+ADDITIONAL_BUILD_PROPERTIES build/core/product_config
+PRODUCT_OTA_PUBLIC_KEYS build/core/product_config
+PRODUCT_EXTRA_RECOVERY_KEYS build/core/product_config
+QCOM_BOARD_PLATFORMS build/core/qcom_utils
+MSM7K_BOARD_PLATFORMS build/core/qcom_utils
+QSD8K_BOARD_PLATFORMS build/core/qcom_utils
+match-word build/core/qcom_utils
+find-word-in-list build/core/qcom_utils
+match-word-in-list build/core/qcom_utils
+match-prefix build/core/qcom_utils
+get-vendor-board-platforms build/core/qcom_utils
+is-board-platform build/core/qcom_utils
+is-not-board-platform build/core/qcom_utils
+is-board-platform-in-list build/core/qcom_utils
+is-chipset-in-board-platform build/core/qcom_utils
+is-chipset-prefix-in-board-platform build/core/qcom_utils
+CUPCAKE_SDK_VERSIONS build/core/qcom_utils
+DONUT_SDK_VERSIONS build/core/qcom_utils
+ECLAIR_SDK_VERSIONS build/core/qcom_utils
+FROYO_SDK_VERSIONS build/core/qcom_utils
+GINGERBREAD_SDK_VERSIONS build/core/qcom_utils
+HONEYCOMB_SDK_VERSIONS build/core/qcom_utils
+ICECREAM_SANDWICH_SDK_VERSIONS build/core/qcom_utils
+JELLY_BEAN_SDK_VERSIONS build/core/qcom_utils
+is-android-codename build/core/qcom_utils
+is-android-codename-in-list build/core/qcom_utils
+LOCAL_MODULE_CLASS build/core/raw_executable
+LOCAL_MODULE_SUFFIX build/core/raw_executable
+LOCAL_FORCE_STATIC_EXECUTABLE build/core/raw_executable
+LOCAL_RAW_STATIC_LIBRARY build/core/raw_static_library
+LOCAL_MODULE_CLASS build/core/shared_library
+LOCAL_MODULE_SUFFIX build/core/shared_library
+LOCAL_UNINSTALLABLE_MODULE build/core/static_java_library
+LOCAL_IS_STATIC_JAVA_LIBRARY build/core/static_java_library
+LOCAL_JAR_EXCLUDE_FILES build/core/static_java_library
+LOCAL_MANIFEST_FILE build/core/static_java_library
+LOCAL_SDK_RES_VERSION build/core/static_java_library
+LOCAL_MODULE_CLASS build/core/static_library
+LOCAL_MODULE_SUFFIX build/core/static_library
+LOCAL_UNINSTALLABLE_MODULE build/core/static_library
+LOCAL_WHOLE_STATIC_LIBRARIES build/core/static_library
+checkapi build/core/tasks/apicheck
+last_released_sdk_version build/core/tasks/apicheck
+INTERNAL_PLATFORM_API_FILE build/core/tasks/apicheck
+SRC_API_DIR build/core/tasks/apicheck
+update-api build/core/tasks/apicheck
+gpl_source_tgz build/core/tasks/collect_gpl_sources
+gpl_source_tgz build/core/tasks/collect_gpl_sources
+cts_dir build/core/tasks/cts
+cts_tools_src_dir build/core/tasks/cts
+cts_name build/core/tasks/cts
+DDMLIB_JAR build/core/tasks/cts
+junit_host_jar build/core/tasks/cts
+HOSTTESTLIB_JAR build/core/tasks/cts
+TF_JAR build/core/tasks/cts
+CTS_TF_JAR build/core/tasks/cts
+CTS_TF_EXEC_PATH build/core/tasks/cts
+CTS_TF_README_PATH build/core/tasks/cts
+VMTESTSTF_INTERMEDIATES build/core/tasks/cts
+VMTESTSTF_JAR build/core/tasks/cts
+CORE_INTERMEDIATES build/core/tasks/cts
+BOUNCYCASTLE_INTERMEDIATES build/core/tasks/cts
+APACHEXML_INTERMEDIATES build/core/tasks/cts
+SQLITEJDBC_INTERMEDIATES build/core/tasks/cts
+JUNIT_INTERMEDIATES build/core/tasks/cts
+CORETESTS_INTERMEDIATES build/core/tasks/cts
+GEN_CLASSPATH build/core/tasks/cts
+CTS_CORE_XMLS build/core/tasks/cts
+$(CTS_CORE_XMLS) build/core/tasks/cts
+CORE_VM_TEST_TF_DESC build/core/tasks/cts
+CORE_INTERMEDIATES build/core/tasks/cts
+JUNIT_INTERMEDIATES build/core/tasks/cts
+GEN_CLASSPATH build/core/tasks/cts
+$(CORE_VM_TEST_TF_DESC) build/core/tasks/cts
+INTERNAL_CTS_TARGET build/core/tasks/cts
+$(INTERNAL_CTS_TARGET) build/core/tasks/cts
+cts build/core/tasks/cts
+copy-testcase-apk build/core/tasks/cts
+copy-testcase build/core/tasks/cts
+PRODUCT_FACTORY_BUNDLE_MODULES build/core/tasks/factory_bundle
+requested_modules build/core/tasks/factory_bundle
+root_dir build/core/tasks/factory_bundle
+leaf build/core/tasks/factory_bundle
+named_dir build/core/tasks/factory_bundle
+tarball build/core/tasks/factory_bundle
+copied_files build/core/tasks/factory_bundle
+$(tarball) build/core/tasks/factory_bundle
+TARGET_FACTORY_RAMDISK_OUT build/core/tasks/factory_ramdisk
+PRODUCT_FACTORY_RAMDISK_MODULES build/core/tasks/factory_ramdisk
+factory_ramdisk_modules build/core/tasks/factory_ramdisk
+install-one-factory-ramdisk-module build/core/tasks/factory_ramdisk
+INTERNAL_FACTORY_RAMDISK_EXTRA_MODULES_FILES build/core/tasks/factory_ramdisk
+INTERNAL_FACTORY_RAMDISK_FILES build/core/tasks/factory_ramdisk
+BUILT_FACTORY_RAMDISK_FS build/core/tasks/factory_ramdisk
+BUILT_FACTORY_RAMDISK_TARGET build/core/tasks/factory_ramdisk
+INSTALLED_FACTORY_RAMDISK_FS build/core/tasks/factory_ramdisk
+INSTALLED_FACTORY_RAMDISK_FS build/core/tasks/factory_ramdisk
+$(INSTALLED_FACTORY_RAMDISK_FS) build/core/tasks/factory_ramdisk
+TARGET_RAMDISK_KERNEL build/core/tasks/factory_ramdisk
+INSTALLED_FACTORY_RAMDISK_TARGET build/core/tasks/factory_ramdisk
+RAMDISK_CMDLINE build/core/tasks/factory_ramdisk
+$(INSTALLED_FACTORY_RAMDISK_TARGET) build/core/tasks/factory_ramdisk
+filter-ide-goals build/core/tasks/ide
+filter-ide-modules build/core/tasks/ide
+eclipse_project_goals build/core/tasks/ide
+eclipse_project_modules build/core/tasks/ide
+installed_modules build/core/tasks/ide
+java_modules build/core/tasks/ide
+source_paths build/core/tasks/ide
+.classpath build/core/tasks/ide
+ECLIPSE-lunch build/core/tasks/ide
+TARGET_AUTO_KDIR build/core/tasks/kernel
+TARGET_KERNEL_SOURCE build/core/tasks/kernel
+KERNEL_SRC build/core/tasks/kernel
+KERNEL_DEFCONFIG build/core/tasks/kernel
+VARIANT_DEFCONFIG build/core/tasks/kernel
+TARGET_KERNEL_SELINUX_CONFIG build/core/tasks/kernel
+KERNEL_OUT build/core/tasks/kernel
+KERNEL_CONFIG build/core/tasks/kernel
+BOARD_USES_UBOOT build/core/tasks/kernel
+BOARD_USES_UNCOMPRESSED_BOOT build/core/tasks/kernel
+TARGET_PREBUILT_INT_KERNEL build/core/tasks/kernel
+TARGET_PREBUILT_INT_KERNEL_TYPE build/core/tasks/kernel
+TARGET_PREBUILT_KERNEL build/core/tasks/kernel
+HAS_PREBUILT_KERNEL build/core/tasks/kernel
+NEEDS_KERNEL_COPY build/core/tasks/kernel
+FULL_KERNEL_BUILD build/core/tasks/kernel
+KERNEL_BIN build/core/tasks/kernel
+KERNEL_HEADERS_INSTALL build/core/tasks/kernel
+KERNEL_MODULES_INSTALL build/core/tasks/kernel
+KERNEL_MODULES_OUT build/core/tasks/kernel
+mv-modules build/core/tasks/kernel
+clean-module-folder build/core/tasks/kernel
+ccache build/core/tasks/kernel
+ARM_CROSS_COMPILE build/core/tasks/kernel
+MAKE_FLAGS build/core/tasks/kernel
+TARGET_KERNEL_MODULES build/core/tasks/kernel
+$(KERNEL_OUT) build/core/tasks/kernel
+$(KERNEL_CONFIG) build/core/tasks/kernel
+$(KERNEL_OUT)/piggy build/core/tasks/kernel
+TARGET_KERNEL_BINARIES build/core/tasks/kernel
+$(TARGET_PREBUILT_INT_KERNEL) build/core/tasks/kernel
+ALL_PREBUILT build/core/tasks/kernel
+gather-all-products build/core/tasks/product-graph
+this_makefile build/core/tasks/product-graph
+products_svg build/core/tasks/product-graph
+products_pdf build/core/tasks/product-graph
+products_graph build/core/tasks/product-graph
+products_list build/core/tasks/product-graph
+really_all_products build/core/tasks/product-graph
+$(products_graph) build/core/tasks/product-graph
+product-debug-filename build/core/tasks/product-graph
+transform-product-debug build/core/tasks/product-graph
+product_debug_files build/core/tasks/product-graph
+$(products_pdf) build/core/tasks/product-graph
+$(products_svg) build/core/tasks/product-graph
+product-graph build/core/tasks/product-graph
+addon_name build/core/tasks/sdk-addon
+addon_dir_leaf build/core/tasks/sdk-addon
+intermediates build/core/tasks/sdk-addon
+full_target build/core/tasks/sdk-addon
+staging build/core/tasks/sdk-addon
+sdk_addon_deps build/core/tasks/sdk-addon
+files_to_copy build/core/tasks/sdk-addon
+stub-addon-jar-file build/core/tasks/sdk-addon
+stub-addon-jar build/core/tasks/sdk-addon
+files_to_copy build/core/tasks/sdk-addon
+doc_modules build/core/tasks/sdk-addon
+sdk_addon_deps build/core/tasks/sdk-addon
+$(full_target) build/core/tasks/sdk-addon
+sdk_addon build/core/tasks/sdk-addon
+ADDON_SDK_ZIP build/core/tasks/sdk-addon
+_vendor_owner_whitelist build/core/tasks/vendor_module_check
+_vendor_check_modules build/core/tasks/vendor_module_check
+_vendor_check_copy_files build/core/tasks/vendor_module_check
+_vendor_module_owner_info build/core/tasks/vendor_module_check
+_vendor_module_owner_info_txt build/core/tasks/vendor_module_check
+$(_vendor_module_owner_info_txt) build/core/tasks/vendor_module_check
+INTERNAL_BUILD_ID_MAKEFILE build/core/version_defaults
+PLATFORM_VERSION build/core/version_defaults
+PLATFORM_SDK_VERSION build/core/version_defaults
+PLATFORM_VERSION_CODENAME build/core/version_defaults
+DEFAULT_APP_TARGET_SDK build/core/version_defaults
+BUILD_ID build/core/version_defaults
+BUILD_NUMBER build/core/version_defaults
+INSTALLED_BOOTLOADER_MODULE build/target/board/board
+INSTALLED_KERNEL_TARGET build/target/board/board
+INSTALLED_ANDROID_INFO_TXT_TARGET build/target/board/board
+board_info_txt build/target/board/board
+$(INSTALLED_ANDROID_INFO_TXT_TARGET) build/target/board/board
+PRODUCT_MAKEFILES build/target/product/AndroidProducts
+PRODUCT_PACKAGES build/target/product/base
+PRODUCT_BRAND build/target/product/core
+PRODUCT_DEVICE build/target/product/core
+PRODUCT_NAME build/target/product/core
+PRODUCT_PACKAGES build/target/product/core
+PRODUCT_COPY_FILES build/target/product/core
+WITH_HOST_DALVIK build/target/product/core
+HAVE_SELINUX build/target/product/core
+PRODUCT_PACKAGES build/target/product/emulator
+PRODUCT_NAME build/target/product/full
+PRODUCT_DEVICE build/target/product/full
+PRODUCT_BRAND build/target/product/full
+PRODUCT_MODEL build/target/product/full
+PRODUCT_PACKAGES build/target/product/full_base
+PRODUCT_PROPERTY_OVERRIDES build/target/product/full_base
+PRODUCT_LOCALES build/target/product/full_base
+PRODUCT_PACKAGES build/target/product/full_base_telephony
+PRODUCT_PROPERTY_OVERRIDES build/target/product/full_base_telephony
+PRODUCT_NAME build/target/product/full_mips
+PRODUCT_DEVICE build/target/product/full_mips
+PRODUCT_BRAND build/target/product/full_mips
+PRODUCT_MODEL build/target/product/full_mips
+PRODUCT_PROPERTY_OVERRIDES build/target/product/full_x86
+PRODUCT_PACKAGES build/target/product/full_x86
+PRODUCT_NAME build/target/product/full_x86
+PRODUCT_DEVICE build/target/product/full_x86
+PRODUCT_BRAND build/target/product/full_x86
+PRODUCT_MODEL build/target/product/full_x86
+PRODUCT_NAME build/target/product/generic
+PRODUCT_DEVICE build/target/product/generic
+PRODUCT_BRAND build/target/product/generic
+PRODUCT_NAME build/target/product/generic_mips
+PRODUCT_DEVICE build/target/product/generic_mips
+PRODUCT_BRAND build/target/product/generic_mips
+PRODUCT_POLICY build/target/product/generic_no_telephony
+PRODUCT_COPY_FILES build/target/product/generic_no_telephony
+PRODUCT_PROPERTY_OVERRIDES build/target/product/generic_no_telephony
+PRODUCT_PACKAGES build/target/product/generic_no_telephony
+PRODUCT_NAME build/target/product/generic_no_telephony
+PRODUCT_DEVICE build/target/product/generic_no_telephony
+PRODUCT_BRAND build/target/product/generic_no_telephony
+PRODUCT_NAME build/target/product/generic_x86
+PRODUCT_DEVICE build/target/product/generic_x86
+PRODUCT_BRAND build/target/product/generic_x86
+PRODUCT_LOCALES build/target/product/languages_full
+PRODUCT_LOCALES build/target/product/languages_small
+PRODUCT_POLICY build/target/product/large_emu_hw
+PRODUCT_PACKAGES build/target/product/large_emu_hw
+PRODUCT_NAME build/target/product/large_emu_hw
+PRODUCT_DEVICE build/target/product/large_emu_hw
+PRODUCT_BRAND build/target/product/large_emu_hw
+PRODUCT_LOCALES build/target/product/locales_full
+PRODUCT_NAME build/target/product/mini
+PRODUCT_DEVICE build/target/product/mini
+PRODUCT_BRAND build/target/product/mini
+PRODUCT_AAPT_CONFIG build/target/product/mini
+PRODUCT_AAPT_PREF_CONFIG build/target/product/mini
+PRODUCT_LOCALES build/target/product/mini
+PRODUCT_PROPERTY_OVERRIDES build/target/product/mini
+PRODUCT_COPY_FILES build/target/product/mini
+PRODUCT_PACKAGES build/target/product/mini
+PRODUCT_POLICY build/target/product/sdk
+PRODUCT_PROPERTY_OVERRIDES build/target/product/sdk
+PRODUCT_PACKAGES build/target/product/sdk
+PRODUCT_PACKAGE_OVERLAYS build/target/product/sdk
+PRODUCT_COPY_FILES build/target/product/sdk
+PRODUCT_NAME build/target/product/sdk
+PRODUCT_DEVICE build/target/product/sdk
+PRODUCT_BRAND build/target/product/sdk
+PRODUCT_LOCALES build/target/product/sdk
+PRODUCT_NAME build/target/product/sdk_mips
+PRODUCT_DEVICE build/target/product/sdk_mips
+PRODUCT_BRAND build/target/product/sdk_mips
+PRODUCT_MODEL build/target/product/sdk_mips
+PRODUCT_NAME build/target/product/sdk_x86
+PRODUCT_DEVICE build/target/product/sdk_x86
+PRODUCT_BRAND build/target/product/sdk_x86
+PRODUCT_MODEL build/target/product/sdk_x86
+PRODUCT_PACKAGES build/target/product/telephony
+PRODUCT_PROPERTY_OVERRIDES build/target/product/vbox_x86
+PRODUCT_PACKAGES build/target/product/vbox_x86
+PRODUCT_NAME build/target/product/vbox_x86
+PRODUCT_DEVICE build/target/product/vbox_x86
+PRODUCT_MODEL build/target/product/vbox_x86
+-------------------------------------------------------------------------------------------------
+
+编译的核心文件是：
+build/core/main.mk 和 
+build/core/makefile，
+
+main.mk主要作用是检查编译环境是否符合要求，确定产品配置，决定产品需要使用的模块，并定义了许多目标供开发者使用，比如droid，sdk等目标，
+但是生成这些目标的规则，主要在Makefile里定义。
+
+内核的编译规则放在build/core/task/kernel.mk
+
+先整体介绍main.mk的执行流程，然后再针对在Linux上编译默认目标时使用的关键代码进行分析。Makefile主要定义了各个目标的生成规则，因此不再详细介绍它的执行流程，若有兴趣看每个目标的生成规则，可查看http://android.cloudchou.com/build/core/Makefile.php
+
+2. main.mk执行流程
+2.1 检验编译环境并建立产品配置
+1) 设置Shell变量为bash，不能使用其它shell
+2) 关闭make的suffix规则，rcs/sccs规则，并设置一个规则: 当某个规则失败了，就删除所有目标
+3) 检验make的版本，cygwin可使用任意版本make，但是linux或者mac只能使用3.81版本或者3.82版本
+4) 设置PWD,TOP,TOPDIR，BUILD_SYSTEM等变量，定义了默认目标变量，但是暂时并未定义默认目标的生成规则
+5) 包含build/core/help.mk，该makefile定义了两个目标help和out, help用于显示帮助，out用于检验编译系统是否正确
+6) 包含build/core/config.mk，config.mk作了很多配置，包括产品配置，包含该makefile后，会建立输出目录系列的变量，还会建立PRODUCT系列变量，后续介绍产品配置时，对此会有更多详细介绍
+7) 包含build/core/cleanbuild.mk，该makefile会包含所有工程的CleanSpec.mk，写了CleanSpec.mk的工程会定义每次编译前的特殊清理步骤，cleanbuild.mk会执行这些清除步骤
+8) 检验编译环境，先检测上次编译结果，如果上次检验的版本和此次检验的版本一致，则不再检测，然后进行检测并将此次编译结果写入
+
+----------------------------------------------------------------------------------
+2.2 包含其它makefile及编译目标检测
+1) 如果目标里含有incrementaljavac， 那么编译目标时将用incremental javac进行增量编译
+2) 设置EMMA_INSTRUMENT变量的值，emma是用于测试代码覆盖率的库
+3) 包含build/core/definistions.mk，该makefile定义了许多辅助函数
+4) 包含build/core/qcom_utils.mk，该makefile定义了高通板子的一些辅助函数及宏
+5) 包含build/core/dex_preopt.mk，该makefile定义了优化dex代码的一些宏
+6) 检测编译目标里是否有user,userdebug,eng，如果有则告诉用户放置在buildspec.mk或者使用lunch设置，检测TARGET_BUILD_VARIANT变量，看是否有效
+7) 包含build/core/pdk_config.mk, PDK主要是能提高现有设备升级能力，帮助设备制造商能更快的适配新版本的android
+
+----------------------------------------------------------------------------------
+2.3 根据TARGET_BUILD_VARIANT建立配置
+1) 如果编译目标里有sdk，win_sdk或者sdk_addon，那么设置is_sdk_build为true
+2) 如果定义了HAVE_SELINUX，那么编译时为build prop添加属性ro.build.selinux=1
+3) 如果TARGET_BUILD_VARIANT是user或者userdebug，那么tags_to_install += debug 如果用户未定义DISABLE_DEXPREOPT为true，并且是user模式，那么将设置WITH_DEXPREOPT := true，该选项将开启apk的预优化，即将apk分成odex代码文件和apk资源文件
+4) 判断enable_target_debugging变量，默认是true，当build_variant是user时，则它是false。如果该变量值为true，则设置Rom的编译属性ro.debuggable为1，否则设置ro.debuggable为0
+5) 如果TARGET_BUILD_VARIANT是eng，那么tags_to_install为debug,eng， 并设置Rom的编译属性ro.setupwizard.mode为OPTIONAL，因为eng模式并不要安装向导
+6) 如果TARGET_BUILD_VARIANT是tests，那么tags_to_install := debug eng tests
+7) 设置sdk相关变量
+8) 添加一些额外的编译属性
+9) 定义should-install-to-system宏函数
+10) 若除了修饰目标，没定义任何目标，那么将使用默认目标编译
+
+----------------------------------------------------------------------------------
+2.4 包含所有要编译的模块的Makefile
+如果编译目标是clean clobber installclean dataclean，那么设置dont_bother为true，若dont_bother为false，则将所有要编译的模块包含进来
+
+1) 如果主机操作系统及体系结构为darwin-ppc(Mac电脑)，那么提示不支持编译Sdk，并将SDK_ONLY设置为true
+
+2) 如果主机操作系统是windows，那么设置SDK_ONLY为true
+
+3) 根据SDK_ONLY是否为true，编译主机操作系统类型，BUILD_TINY_ANDROID的值，设置sudbidrs变量
+
+4) 将所有PRODUCT_*相关变量存储至stash_product_vars变量，稍后将验证它是否被修改
+
+5) 根据ONE_SHOT_MAKEFILE的值是否为空，包含不同的makefile
+
+6) 执行post_clean步骤，并确保产品相关变量没有变化
+
+7) 检测是否有文件加入ALL_PREBUILT
+
+8) 包含其它必须在所有Android.mk包含之后需要包含的makefile
+
+9) 将known_custom_modules转化成安装路径得到变量CUSTOM_MODULES
+
+10) 定义模块之间的依赖关系，$(ALL_MODULES.$(m).REQUIRED))变量指明了模块之间的依赖关系
+
+11) 计算下述变量的值：product_MODULES，debug_MODULES，eng_MODULES，tests_MODULES，modules_to_install，overridden_packages，target_gnu_MODULES，ALL_DEFAULT_INSTALLED_MODULES
+
+12) 包含build/core/Makefile
+
+13) 定义变量modules_to_check
+----------------------------------------------------------------------------------
+2.5 定义多个目标
+这一节定义了众多目标：
+prebuilt，all_copied_headers，files，checkbuild，ramdisk，factory_ramdisk，factory_bundle，systemtarball，boottarball，userdataimage，userdatatarball，cacheimage，bootimage，droidcore，dist_files，apps_only，all_modules，docs，sdk，lintall，samplecode，findbugs，clean，modules，showcommands，nothing。
+
+后续文章将列出所有可用的目标。
+----------------------------------------------------------------------------------
+3 编译默认目标时的执行流程
+----------------------------------------------------------------------------------
+在介绍编译默认目标时的执行流程之前，先介绍一下ALL_系列的变量，否则看代码时很难搞懂这些变量的出处，这些变量在包含所有模块后被建立，每个模块都有对应的用于编译的makefile，这些makefile会包含一个编译类型对应的makefile，比如package.mk，而这些makefile最终都会包含base_rules.mk，在base_rules.mk里会为ALL系列变量添加值。所有这些变量及其来源均可在android.cloudchou.com查看详细解释：
+
+1) ALL_DOCS所有文档的全路径，ALL_DOCS的赋值在droiddoc.mk里, ALL_DOCS += $(full_target)
+2) ALL_MODULES系统的所有模块的简单名字集合，编译系统还为每一个模块还定义了其它两个变量，ALL_MODULES.$(LOCAL_MODULE).BUILT 所有模块的生成路径ALL_MODULES.$(LOCAL_MODULE).INSTALLED 所有模块的各自安装路径，详情请见http://android.cloudchou.com/build/core/definitions.php#ALL_MODULES
+3) ALL_DEFAULT_INSTALLED_MODULES 所有默认要安装的模块,在build/core/main.mk和build/core/makfile里设置
+4) ALL_MODULE_TAGS 使用LOCAL_MODULE_TAGS定义的所有tag集合，每一个tag对应一个ALL_MODULE_TAGS.变量，详情请见http://android.cloudchou.com/build/core/definitions.php#ALL_MODULE_TAGS
+5) ALL_MODULE_NAME_TAGS类似于ALL_MODULE_TAGS，但是它的值是 某个tag的所有模块的名称 详情请见http://android.cloudchou.com/build/core/definitions.php#ALL_MODULE_NAME_TAGS
+6) ALL_HOST_INSTALLED_FILES 安装在pc上的程序集合
+7) ALL_PREBUILT 将会被拷贝的预编译文件的安装全路径的集合
+8) ALL_GENERATED_SOURCES 某些工具生成的源代码文件的集合，比如aidl会生成java源代码文件
+9) ALL_C_CPP_ETC_OBJECTS 所有asm，c,c++,以及lex和yacc生成的c代码文件的全路径
+10) ALL_ORIGINAL_DYNAMIC_BINARIES 没有被优化，也没有被压缩的动态链接库
+11) ALL_SDK_FILES 将会放在sdk的文件
+12) ALL_FINDBUGS_FILES 所有findbugs程序用的xml文件
+13) ALL_GPL_MODULE_LICENSE_FILES GPL 模块的 许可文件
+14) ANDROID_RESOURCE_GENERATED_CLASSES Android 资源文件生成的java代码编译后的类的类型
+
+
+----------------------------------------------------------------------------------
+3.1 关键代码
+定义默认目标的代码位于main.mk：
+
+
+.PHONY: droid
+DEFAULT_GOAL := droid
+$(DEFAULT_GOAL):
+droid目标依赖的目标有：
+
+
+ifneq ($(TARGET_BUILD_APPS),)
+...
+droid: apps_only #如果编译app，那么droid依赖apps_only目标
+else
+...
+droid: droidcore dist_files #默认依赖droidcore目标和dist_files目标
+endif
+dist_files目标依赖的目标主要是一些用于打包的工具，它们都是用dist-for-goals宏添加依赖关系的：
+
+
+$(call dist-for-goals, dist_files, $(EMMA_META_ZIP))
+system/core/mkbootimg/Android.mk$(call dist-for-goals, dist_files, $( LOCAL_BUILT_MODULE ))
+system/core/cpio/Android.mk:13:$(call dist-for-goals,dist_files,$(LOCAL_BUILT_MODULE))
+system/core/adb/Android.mk:88:$(call dist-for-goals,dist_files sdk,$(LOCAL_BUILT_MODULE))
+system/core/fastboot/Android.mk:68:$(call dist-for-goals,dist_files sdk,$(LOCAL_BUILT_MODULE))
+external/guava/Android.mk:26:$(call dist-for-goals, dist_files, $(LOCAL_BUILT_MODULE):guava.jar)
+external/yaffs2/Android.mk:28:$(call dist-for-goals, dist_files, $(LOCAL_BUILT_MODULE))
+external/mp4parser/Android.mk:26:$(call dist-for-goals, dist_files, $(LOCAL_BUILT_MODULE):mp4parser.jar)
+external/jsr305/Android.mk:25:$(call dist-for-goals, dist_files, $(LOCAL_BUILT_MODULE):jsr305.jar)
+frameworks/support/renderscript/v8/Android.mk:29:#$(call dist-for-goals, dist_files, $(LOCAL_BUILT_MODULE):volley.jar)
+frameworks/support/volley/Android.mk:29:#$(call dist-for-goals, dist_files, $(LOCAL_BUILT_MODULE):volley.jar)
+我们再看droidcore目标依赖的目标有：
+
+
+droidcore: files \
+  systemimage \ #system.img
+  $(INSTALLED_BOOTIMAGE_TARGET) \ #boot.img
+  $(INSTALLED_RECOVERYIMAGE_TARGET) \#recovery.img
+  $(INSTALLED_USERDATAIMAGE_TARGET) \#data.img
+  $(INSTALLED_CACHEIMAGE_TARGET) \#cache.img
+  $(INSTALLED_FILES_FILE)# installed-files.txt
+ifneq ($(TARGET_BUILD_APPS),)
+....
+else
+$(call dist-for-goals, droidcore, \
+    $(INTERNAL_UPDATE_PACKAGE_TARGET) #cm_find5-img-eng.cloud.zip
+    $(INTERNAL_OTA_PACKAGE_TARGET) \ # cm_find5-ota-eng.cloud.zip
+    $(SYMBOLS_ZIP) \ # cm_find5-symbols-eng.cloud.zip
+    $(INSTALLED_FILES_FILE) \# installed-files.txt
+    $(INSTALLED_BUILD_PROP_TARGET) \# system/build.prop
+    $(BUILT_TARGET_FILES_PACKAGE) \# cm_find5-target_files-eng.cloud.zip
+    $(INSTALLED_ANDROID_INFO_TXT_TARGET) \# android-info.txt
+    $(INSTALLED_RAMDISK_TARGET) \# ramdisk.img
+    $(INSTALLED_FACTORY_RAMDISK_TARGET) \# factory_ramdisk.gz
+    $(INSTALLED_FACTORY_BUNDLE_TARGET) \# cm_find5-factory_bundle- eng.cloud.zip
+   )
+endif
+system.img, boot.img, recovery.img, data.img,cache.img,installed_files.txt的生成规则在Makefile里定义, 在http://android.cloudchou.com/build/core/Makefile.php里可以看到详细的生成规则 再看一下files目标所依赖的目标：
+
+
+files: prebuilt \
+        $(modules_to_install) \
+        $(INSTALLED_ANDROID_INFO_TXT_TARGET)
+prebuilt目标依赖$(ALL_PREBUILT)，android-info.txt的生成规则在target/board/board.mk里定义，而$(modules_to_install)目标是所有要安装的模块的集合，计算比较复杂，现在以在linux下编译默认目标为例，将涉及到的代码组织如下：
+
+
+...
+tags_to_install :=
+ifneq (,$(user_variant))
+...
+  ifeq ($(user_variant),userdebug)
+  tags_to_install += debug
+  else
+  ...
+  endif
+endif
+ifeq ($(TARGET_BUILD_VARIANT),eng)
+tags_to_install := debug eng
+...
+endif
+ifeq ($(TARGET_BUILD_VARIANT),tests)
+tags_to_install := debug eng tests
+endif
+ifdef is_sdk_build
+tags_to_install := debug eng
+else # !sdk
+endif
+...
+# ------------------------------------------------------------
+# Define a function that, given a list of module tags, returns
+# non-empty if that module should be installed in /system.
+
+# For most goals, anything not tagged with the "tests" tag should
+# be installed in /system.
+define should-install-to-system
+$(if $(filter tests,$(1)),,true)
+endef
+ifdef is_sdk_build
+# For the sdk goal, anything with the "samples" tag should be
+# installed in /data even if that module also has "eng"/"debug"/"user".
+define should-install-to-system
+$(if $(filter samples tests,$(1)),,true)
+endef
+endif
+...
+#接下来根据配置计算要查找的subdirs目录
+ifneq ($(dont_bother),true)
+...
+ifeq ($(SDK_ONLY),true)
+include $(TOPDIR)sdk/build/sdk_only_whitelist.mk
+include $(TOPDIR)development/build/sdk_only_whitelist.mk
+# Exclude tools/acp when cross-compiling windows under linux
+ifeq ($(findstring Linux,$(UNAME)),)
+subdirs += build/tools/acp
+endif
+
+else  # !SDK_ONLY
+ifeq ($(BUILD_TINY_ANDROID), true)
+subdirs := \
+  bionic \
+  system/core \
+  system/extras/ext4_utils \
+  system/extras/su \
+  build/libs \
+  build/target \
+  build/tools/acp \
+  external/gcc-demangle \
+  external/mksh \
+  external/openssl \
+  external/yaffs2 \
+  external/zlib
+else  # !BUILD_TINY_ANDROID
+subdirs := $(TOP) 
+FULL_BUILD := true
+endif # !BUILD_TINY_ANDROID
+endif
+# Before we go and include all of the module makefiles, stash away
+# the PRODUCT_* values so that later we can verify they are not modified.
+stash_product_vars:=true
+ifeq ($(stash_product_vars),true)
+  $(call stash-product-vars, __STASHED)
+endif
+....
+ifneq ($(ONE_SHOT_MAKEFILE),)
+include $(ONE_SHOT_MAKEFILE)
+CUSTOM_MODULES := $(sort $(call get-tagged-modules,$(ALL_MODULE_TAGS)))
+FULL_BUILD :=
+...
+else # ONE_SHOT_MAKEFILE
+#
+# Include all of the makefiles in the system
+#
+
+# Can't use first-makefiles-under here because
+# --mindepth=2 makes the prunes not work.
+subdir_makefiles := \
+  $(shell build/tools/findleaves.py --prune=out --prune=.repo --prune=.git $(subdirs) Android.mk)
+
+include $(subdir_makefiles)
+
+endif # ONE_SHOT_MAKEFILE
+...
+ifeq ($(stash_product_vars),true)
+  $(call assert-product-vars, __STASHED)
+endif
+...
+# -------------------------------------------------------------------
+# Fix up CUSTOM_MODULES to refer to installed files rather than
+# just bare module names.  Leave unknown modules alone in case
+# they're actually full paths to a particular file.
+known_custom_modules := $(filter $(ALL_MODULES),$(CUSTOM_MODULES))
+unknown_custom_modules := $(filter-out $(ALL_MODULES),$(CUSTOM_MODULES))
+CUSTOM_MODULES := \
+  $(call module-installed-files,$(known_custom_modules)) \
+  $(unknown_custom_modules
+# -------------------------------------------------------------------
+# Figure out our module sets.
+#
+# Of the modules defined by the component makefiles,
+# determine what we actually want to build.
+
+ifdef FULL_BUILD
+  # The base list of modules to build for this product is specified
+  # by the appropriate product definition file, which was included
+  # by product_config.make.
+  product_MODULES := $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES)
+  # Filter out the overridden packages before doing expansion
+  product_MODULES := $(filter-out $(foreach p, $(product_MODULES), \
+      $(PACKAGES.$(p).OVERRIDES)), $(product_MODULES))
+  $(call expand-required-modules,product_MODULES,$(product_MODULES))
+  product_FILES := $(call module-installed-files, $(product_MODULES))
+  ifeq (0,1)
+    $(info product_FILES for $(TARGET_DEVICE) ($(INTERNAL_PRODUCT)):)
+    $(foreach p,$(product_FILES),$(info :   $(p)))
+    $(error done)
+  endif
+else
+  # We're not doing a full build, and are probably only including
+  # a subset of the module makefiles.  Don't try to build any modules
+  # requested by the product, because we probably won't have rules
+  # to build them.
+  product_FILES :=
+endif
+# When modules are tagged with debug eng or tests, they are installed
+# for those variants regardless of what the product spec says.
+debug_MODULES := $(sort \
+        $(call get-tagged-modules,debug) \
+        $(call module-installed-files, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES_DEBUG)) \
+    )
+eng_MODULES := $(sort \
+        $(call get-tagged-modules,eng) \
+        $(call module-installed-files, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES_ENG)) \
+    )
+tests_MODULES := $(sort \
+        $(call get-tagged-modules,tests) \
+        $(call module-installed-files, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES_TESTS)) \
+)
+# TODO: Remove the 3 places in the tree that use ALL_DEFAULT_INSTALLED_MODULES
+# and get rid of it from this list.
+# TODO: The shell is chosen by magic.  Do we still need this?
+modules_to_install := $(sort \
+    $(ALL_DEFAULT_INSTALLED_MODULES) \
+    $(product_FILES) \
+    $(foreach tag,$(tags_to_install),$($(tag)_MODULES)) \
+    $(call get-tagged-modules, shell_$(TARGET_SHELL)) \
+    $(CUSTOM_MODULES) \
+  )
+# Some packages may override others using LOCAL_OVERRIDES_PACKAGES.
+# Filter out (do not install) any overridden packages.
+overridden_packages := $(call get-package-overrides,$(modules_to_install))
+ifdef overridden_packages
+#  old_modules_to_install := $(modules_to_install)
+  modules_to_install := \
+      $(filter-out $(foreach p,$(overridden_packages),$(p) %/$(p).apk), \
+          $(modules_to_install))
+endif
+#$(error filtered out
+#           $(filter-out $(modules_to_install),$(old_modules_to_install)))
+
+# Don't include any GNU targets in the SDK.  It's ok (and necessary)
+# to build the host tools, but nothing that's going to be installed
+# on the target (including static libraries).
+ifdef is_sdk_build
+  target_gnu_MODULES := \
+              $(filter \
+                      $(TARGET_OUT_INTERMEDIATES)/% \
+                      $(TARGET_OUT)/% \
+                      $(TARGET_OUT_DATA)/%, \
+                              $(sort $(call get-tagged-modules,gnu)))
+  $(info Removing from sdk:)$(foreach d,$(target_gnu_MODULES),$(info : $(d)))
+  modules_to_install := \
+              $(filter-out $(target_gnu_MODULES),$(modules_to_install))
+
+  # Ensure every module listed in PRODUCT_PACKAGES* gets something installed
+  # TODO: Should we do this for all builds and not just the sdk?
+  $(foreach m, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES), \
+    $(if $(strip $(ALL_MODULES.$(m).INSTALLED)),,\
+      $(warning $(ALL_MODULES.$(m).MAKEFILE): Module '$(m)' in PRODUCT_PACKAGES has nothing to install!)))
+  $(foreach m, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES_DEBUG), \
+    $(if $(strip $(ALL_MODULES.$(m).INSTALLED)),,\
+      $(warning $(ALL_MODULES.$(m).MAKEFILE): Module '$(m)' in PRODUCT_PACKAGES_DEBUG has nothing to install!)))
+  $(foreach m, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES_ENG), \
+    $(if $(strip $(ALL_MODULES.$(m).INSTALLED)),,\
+      $(warning $(ALL_MODULES.$(m).MAKEFILE): Module '$(m)' in PRODUCT_PACKAGES_ENG has nothing to install!)))
+  $(foreach m, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES_TESTS), \
+    $(if $(strip $(ALL_MODULES.$(m).INSTALLED)),,\
+      $(warning $(ALL_MODULES.$(m).MAKEFILE): Module '$(m)' in PRODUCT_PACKAGES_TESTS has nothing to install!)))
+endif
+
+# Install all of the host modules
+modules_to_install += $(sort $(modules_to_install) $(ALL_HOST_INSTALLED_FILES))
+
+# build/core/Makefile contains extra stuff that we don't want to pollute this
+# top-level makefile with.  It expects that ALL_DEFAULT_INSTALLED_MODULES
+# contains everything that's built during the current make, but it also further
+# extends ALL_DEFAULT_INSTALLED_MODULES.
+ALL_DEFAULT_INSTALLED_MODULES := $(modules_to_install)
+include $(BUILD_SYSTEM)/Makefile
+modules_to_install := $(sort $(ALL_DEFAULT_INSTALLED_MODULES))
+ALL_DEFAULT_INSTALLED_MODULES :=
+
+endif # dont_bother
+# These are additional goals that we build, in order to make sure that there
+# is as little code as possible in the tree that doesn't build.
+modules_to_check := $(foreach m,$(ALL_MODULES),$(ALL_MODULES.$(m).CHECKED))
+
+# If you would like to build all goals, and not skip any intermediate
+# steps, you can pass the "all" modifier goal on the commandline.
+ifneq ($(filter all,$(MAKECMDGOALS)),)
+modules_to_check += $(foreach m,$(ALL_MODULES),$(ALL_MODULES.$(m).BUILT))
+endif
+
+# for easier debugging
+modules_to_check := $(sort $(modules_to_check))
+#$(error modules_to_check $(modules_to_check))
