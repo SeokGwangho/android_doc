@@ -3,10 +3,10 @@ Android的加载/链接器linker
 
 
 Reference：
-[1]  漫谈兼容内核之八: ELF映像的装入 毛德操
-[2]  Linkers and loaders.
-[3]  How to write shared libraries.
-[4]  C++异常机制的实现方式和开销分析
+漫谈兼容内核之八: ELF映像的装入 毛德操
+Linkers and loaders.
+How to write shared libraries.
+
 ----------------------------------------------------------------
 Android的加载/链接器linker 主要用于实现【共享库】的加载与链接。 
 ----------------------------------------------------------------
