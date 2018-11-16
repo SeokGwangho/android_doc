@@ -1,0 +1,37 @@
+---------------------------------------------------------------------------
+ramdisk
+---------------------------------------------------------------------------
+ramdisk通过字面意思，就大概能理解意思，虚拟内存盘，将sdram模拟成硬盘来使用的文件系统。
+对于传统的磁盘文件系统来说，这样做的好处是可以极大提高文件访问速度；
+但由于是ram，所以在掉电后，这部分内容不能保存。
+ramdisk文件系统，是在系统上电后，直接从磁盘一次性读到sdram，在整个运行期间，都不会有写回操作，所以任何修改，都掉电后都丢失。
+
+---------------------------------------------------------------------------
+ramdisk.img：
+是编译Android生成的一个镜像文件，最后和kernel一起打包生成boot.img镜像。
+ramdisk.img中主要是存放：
+    android启动后第一个用户进程 init可执行文件 和 
+    init.*.rc 等相关启动脚本，以及
+    sbin目录下的adbd工具。
+
+
+ramdisk.img是将上述目录打包压缩而来的， 可以通过下面命令，来解压出其中的内容：
+---------------------------------------------------------------------------
+首先使用file命令查看ramdisk.img文件类型：
+file ramdisk.img
+ramdisk.img: gzip compressed data, from Unix
+
+看出为gzip压缩过的文件，将ramdisk.img重命名为ramdisk.img.gz
+mv ramdisk.img ramdisk.img.gz
+
+再用file来看一下ramdisk.img，此时为
+ramdisk.img: ASCII cpio archive (SVR4 with no CRC)
+
+这时候使用cpio来提取ramdisk.img中的内容
+mkdir temp
+cp temp
+cpio -i -F ../ramdisk.img
+---------------------------------------------------------------------------
+
+android的init.rc脚本就是ramdisk一个例子，在板子上修改是没有用的，重启丢失，
+只有修改device/平台/../init.rc然后重新make bootimage重新生产boot.img烧录到板子上才能修改成功。
