@@ -16,6 +16,48 @@ Android 生成的目标文件：
 有的平台是将所有的需要的镜像文件，打包成USB bin文件，进行增量升级。
 
 
+boot.img:
+在制作android烧写镜像时，boot.img是一个很重要的文件:
+
+boot.img 在一般情况下包括了 ramdisk、kernel,  KERNEL_CMDLINE, FLASH_PAGE_SIZE 四个部分。
+
+从 /build/core/Makefile 文件中可以看到 boot.img 的生成过程:
+
+INSTALLED_BOOTIMAGE_TARGET:=$(PRODUCT_OUT)/boot.img  	//定义输出文件名称
+INTERNAL_BOOTIMAGE_ARGS:=...\
+   --kernel $(INSTALLED_KERNEL_TARGET)   \ 		//其实INSTALL_KERNEL_TARGET就是kernel下的Image文件
+   --ramdisk $(INSTALLED_RAMDISK_TARGET) \		//ramdisk.img是mkbootfs工具用out/.../tcc8900/root目录生成,并做了压缩
+...
+
+ifdef BOARD_KERNEL_CMDLINE
+   INTERNAL_BOOTIMAGE_ARGS+= --cmdline "$(BOARD_KERNEL_CMDLINE)"
+tcc89xx的device/telechips/tcc8900/BoardConfig.mk包含了device/telechips/tcc92xx-common目录中的
+BoardConfigCommon.mk文件，tcc8900的BOARD_KERNEL_CMDLINE就被定义在这个BoardConfigCommon.mk中
+endif
+
+ifdef BOARD_KERNEL_BASE
+  INTERNAL_BOOTIMAGE_ARGS+= --base  "$(BOARD_KERNEL_BASE)"
+和BOARD_KERNEL_CMDLINE一样，该宏也被定义在tcc9xx-common/BoardConfigCommon.mk中
+endif
+
+ifdef BOARD_FLASH_PAGE_SIZE
+  INTERNAL_BOOTIMAGE_ARGS+= --pagesize "$BOARD_FLASH_PAGE_SIZE"
+BOARD_FLASH_PAGE_SIZE可以在device/telechips/tcc8900/BoardConfig.mk文件中找到其定义
+endif
+......
+
+$(INSTALLED_BOOTIMAGE_TARGET):$(MKBOOTIMG) $(INTERNAL_BOOTIMAGE_FILES)
+    $(hide)  $(MKBOOTIMG) $(INTERNAL_BOOTIMAGE_ARGS)  --output $@  使用mkbootimg工具生成最后boot.img
+...
+ 其中INSTALLED_KERNEL_TARGET在Android/build/target/board/Android.mk内被定义：
+INSTALLED_KERNEL_TARGET:=$(PRODUCT_OUT)/kernel  就是kernel源码编译后的Image文件
+
+
+在boot.img生成过程中用到的诸如MKBOOTIMG，MKBOOTFS，MINIGZIP工具在build/core/config.mk中定义:
+MKBOOTIMG:=$(HOST_OUT_EXECUTABLES)mkbootimg$(HOST_OUT_EXECUTABLE_SUFFIX)
+
+
+
 插入内容：
 ------------------------------------------------------------------------------------
 TARGET_OUT_ROOT := $(TARGET_OUT_ROOT_$(TARGET_BUILD_TYPE))  //build/make/core/envsetup.mkで設定
