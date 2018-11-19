@@ -1,0 +1,79 @@
+まとめ：
+    sepolicy的重头工作是编译sepolicy安全策略文件。
+	这个文件来源于众多的te文件，初始化相关的文件（initial_sid,initial_sid_context,users,roles,fs_context等）。
+
+    file_context: 	各ディレクトリーの初期化用のSContextを記録しているので、LABELと関係があるはず。
+    seapp_context: 	AndroidのAppのLABELと関係ある。
+    property_contexts: 	AndroidのProperty_Serviceと関係がある、各PropertyにLABELをつける。
+
+
+-----------------------------------------------------------------------------------------------------------------------------------
+SEAndroid/SELinux初期化のまとめ： initから始まる
+-----------------------------------------------------------------------------------------------------------------------------------
+Androidで、SEAndroidの初期化は、initプロセスのmain関数でやっている：
+
+[-->init.c:main]
+
+	process_kernel_cmdline();
+
+	//SELinux log 出力用の２つ関数を登録
+	union selinux_callback cb;
+	cb.func_log = klog_write;
+	selinux_set_callback(SELINUX_CB_LOG, cb); 	//selinux_set_callback()：libselinuxの中で定義。libselinuxの各APIを調べる？
+
+	cb.func_audit = audit_callback;
+	selinux_set_callback(SELINUX_CB_AUDIT, cb);
+
+	selinux_initialize(); 		//1. SEAndroidを初期化
+	restorecon("/dev"); 		//2. Directory にLABELを設定している。[restore context]の略語だろ、file_contextsの中身により、各DirectoryにLabelを設定している
+	restorecon("/dev/socket");
+	restorecon("/dev/__properties__");
+	restorecon_recursive("/sys");
+	...
+
+
+--------------------------------------------------------------------------------------
+selinux_initialize()の詳細：
+--------------------------------------------------------------------------------------
+selinux_initialize()分析
+[-->init.c:: selinux_initialize]
+
+static void selinux_initialize(void)
+{
+	/* selinux が効いているかを見る方法：/sys/fs/selinux が存在するか、ro.boot.selinux Propertyがdisabledでないこと*/
+	if (selinux_is_disabled()) return;
+
+	if (selinux_android_load_policy() < 0) { //sepolicyファイルをLoadする
+		......
+	}
+
+	selinux_init_all_handles(); 		//初始化file_context，seapp_context及property_context相关内容。
+
+	/* selinuxには2つのMode:
+		permissive: 	すべてを許可するが、違反があった場合は記録するだけ
+		enforcing: 	すべての操作に対して、権限Checkする
+	*/
+	bool is_enforcing = selinux_is_enforcing();
+
+	
+	security_setenforce(is_enforcing); 	//Set SELinux Mode
+}
+
+
+    
+
+
+（1） selinux_android_load_policy()の中身：
+[-->external/libselinux/src/android.c:: selinux_android_load_policy]
+int selinux_android_load_policy(void)
+{
+    char *mnt = SELINUXMNT; 	//値は/sys/fs/selinux
+    int rc; 			//Directoty　/sys/fs/selinuxをマウント、SELINUXFSの値は"selinuxfs"
+
+    rc = mount(SELINUXFS, mnt, SELINUXFS, 0, NULL);
+     ......
+    // /sys/fs/selinux: userpace と kernelの通信に使うNode
+    set_selinuxmnt(mnt); //selinux.hの中で定義、libselinux API.
+
+    return selinux_android_reload_policy(); //SEAndroidのpolicyファイルをLoadする！
+}
