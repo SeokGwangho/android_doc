@@ -1,4 +1,4 @@
-Android Studio工程里的 AndroidManifest.xml文件
+Android Studio工程里的 AndroidManifest.xml文件的作用：
 
 android的四大组件，都必须在一个叫 AndroidManifest.xml 文件中进行注册。
 
