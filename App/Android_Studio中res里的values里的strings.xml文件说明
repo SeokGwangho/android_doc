@@ -1,0 +1,72 @@
+Android_Studio中
+src/main/res/values/中strings.xml文件
+
+Android_Studio中res里的values里的strings.xml文件说明
+----------------------------------------------------
+strings.xml文件中的内容:
+----------------------------------------------------
+//GPSTest/src/main/res/values/strings.xml:    
+<resources>
+    <string name="app_name">GPSTest</string>
+
+    <!-- Fragments -->
+    <string name="gps_status_title">Status</string>
+    <string name="gps_map_title">Map</string>
+    <string name="gps_sky_title">Sky</string>
+
+    <!-- Navigation Drawer -->
+    <string name="navdrawer_separator_assist_data">Modify assist data</string>
+    <string name="force_xtra_injection">Inject XTRA data</string>
+    <string name="force_time_injection">Inject time data</string>
+    <string name="delete_aiding_data">Clear assist data</string>
+    <string name="navdrawer_item_settings">Settings</string>
+    <string name="navdrawer_item_help">Help</string>
+    <string name="navdrawer_item_send_feedback">Send feedback</string>
+    <string name="navdrawer_item_open_source">Visit us on GitHub</string>
+    ... ...
+    <string name="gps_latitude_label">Lat:</string>
+    ... ...
+    
+<resource>
+    
+
+
+----------------------------------------------------
+在活动(Activity)中获得字符串的方式：
+----------------------------------------------------
+      str = getResources().getString(R.string.app_name);
+
+//
+GPSTest/src/main/java/com/android/gpstest/GpsTestActivity.java:     setTitle(getResources().getString(R.string.gps_status_title));
+GPSTest/src/main/java/com/android/gpstest/GpsTestActivity.java:     setTitle(getResources().getString(R.string.gps_map_title));
+GPSTest/src/main/java/com/android/gpstest/GpsTestActivity.java:     setTitle(getResources().getString(R.string.gps_sky_title));
+... ...
+
+
+----------------------------------------------------
+在xml布局文件中引用该字符串：
+----------------------------------------------------
+android:text="@string/app_name"
+
+
+
+
+----------------------------------------------------------------------------
+在Activity获取字符串资源：
+----------------------------------------------------------------------------
+    正确做法：
+    getResources().getString(R.string.app_name)
+
+    简便做法:
+    this.getString(R.string.app_name)
+
+
+在Context获取字符串资源：
+context.getString(R.string.app_name)
+
+
+从Application获取字符串资源：
+application.getString(R.string.app_name)
+
+
+为了代码规范化，建议把要使用的字符串，放在strings.xml文件中，提高代码的复用性。
