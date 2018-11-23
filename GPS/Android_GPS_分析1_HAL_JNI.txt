@@ -108,7 +108,11 @@ GpsSvInfo:
 		/** Represents SV information. */  
 		typedef struct {  
 			size_t 	size; 		/** set to sizeof(GpsSvInfo) */  
-			int     prn;  		/** Pseudo-random number for the SV. */  float   snr;  		/** Signal to noise ratio. */ float   elevation;  	/** Elevation of SV in degrees. */ float   azimuth;  	/** Azimuth of SV in degrees. */ } GpsSvInfo; 
+			int     prn;  		/** Pseudo-random number for the SV. */  
+			float   snr;  		/** Signal to noise ratio. */ 
+			float   elevation;  	/** Elevation of SV in degrees. */ 
+			float   azimuth;  	/** Azimuth of SV in degrees. */ 
+		} GpsSvInfo; 
 
 GpsSvStatus: 
 		//GPS卫星状态，包含可见卫星数和信息，星历时间，年历时间等。
