@@ -1,0 +1,135 @@
+------------------------------------------------------------
+什么是RecyclerView？
+
+一个在大小有限的窗口内, 展示大量数据集的view。
+
+RecyclerView,都说是用来取代ListView和GridView的，
+事实上RecyclerView的确可以做到ListView和GridView能做的事，
+而且他将ViewHolder和Adapter都作为内部类，写在了RecyclerView中。(把所有类都写在RecyclerView内部的做法?)
+
+RecyclerView中，ViewHolder作为RecyclerView内部复用的单位，直接避免了不必要的findViewById。
+ListView中，则需要我们自己定义ViewHolder。
+
+
+
+一个使用RecyclerView的示例：
+
+首先回顾一下是如何使用一个RecyclerView的：
+
+------------------------------------------------------------
+第一步在布局文件里加上RecyclerView：
+------------------------------------------------------------
+<?xml version="1.0" encoding="utf-8"?>
+
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:card_view="http://schemas.android.com/apk/res-auto">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/gnss_status_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_margin="5dp" />
+</LinearLayout>
+
+                
+------------------------------------------------------------
+第二步，给RecyclerView的item编写布局：
+------------------------------------------------------------
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <ImageView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:src="@drawable/test" />
+
+</LinearLayout>
+
+------------------------------------------------------------
+第三步，为RecyclerView写一个Adapter：
+------------------------------------------------------------
+package com.xiasuhuei321.test;
+
+import android.content.Context;
+import android.support.v7.widget.RecyclerView;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.support.v7.widget.RecyclerView.ViewHolder;
+
+public class TestAdapter extends RecyclerView.Adapter {
+    Context mContext;
+
+    public TestAdapter(Context context) {
+        this.mContext = context;
+    }
+
+    @Override
+    public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+
+        return new ItemViewHolder(LayoutInflater.from(mContext).inflate(R.layout.item_test, parent, false));
+    }
+
+    @Override
+    public int getItemCount() {
+        return 100;
+    }
+
+    @Override
+    public void onBindViewHolder(ViewHolder holder, int position) {
+    }
+
+    class ItemViewHolder extends ViewHolder {
+
+        public ItemViewHolder(View itemView) {
+            super(itemView);
+        }
+    }
+
+}
+这里只是简单的演示。
+
+
+------------------------------------------------------------
+第四步，给RecyclerView设置对应的布局和Adapter：
+------------------------------------------------------------
+package com.xiasuhuei321.test;
+
+import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+
+/**
+ * Created by xiasuhuei321 on 2016/12/25.
+ * author:luo
+ * e-mail:xiasuhuei321@163.com
+ */
+
+public class TestActivity extends AppCompatActivity {
+
+    private RecyclerView mList;
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_test);
+
+        mList = (RecyclerView) findViewById(R.id.rv_list);
+        mList.setLayoutManager(new LinearLayoutManager(this));
+        mList.setAdapter(new TestAdapter(this));
+    }
+}
+------------------------------------------------------------
+第五步，效果:  
+------------------------------------------------------------
+  我手机。。。
