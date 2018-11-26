@@ -1,0 +1,197 @@
+---------------------------------------------------------------------------
+java_继承(implements和extends)总结.txt
+---------------------------------------------------------------------------
+键字implements是某类实现一个接口时用的关键字。它是类用来实现接口中定义的抽象方法的。
+
+类实现一个接口，必须实现接口中的所有方法。
+
+使用 implements 关键字，可以变相的使java具有多继承的特性，可以同时继承多个接口(接口们之间采用,分隔)。
+
+还有几点需要注意：
+(1)接口可以被多重实现（implements）,抽象类只能被单一继承（extends）
+(2)接口只有定义,抽象类可以有定义和实现
+(3)接口的字段定义默认为:public static final, 抽象类字段默认是”friendly”(本包可见)
+
+-------------------------------------------------------
+举例：
+-------------------------------------------------------
+定义两个接口Bread、Milk并（implements）单一实现
+
+//定义Bread接口：
+public interface Bread {
+  public void eatBread();        //定义一个方法，吃面包(接口中没有具体的实现)
+}
+
+//定义interface接口：
+public interface Milk {
+  public void drinkMilk();        //定义一个方法，喝牛奶
+}
+
+
+//Bread接口的实现类：
+public class BreadImpl implements Bread {
+   public void eatBread() {      //实现eatBread方法(接口的实现类中需要有具体的方法体)
+     System.out.println("吃面包");
+   }
+}
+
+//Bread接口的实现类：
+public class MilkImpl implements Milk {
+   public void drinkMilk() {    //实现eatBread方法(接口的实现类中需要有具体的方法体)
+     System.out.println("喝牛奶");
+   }
+}
+
+-------------------------------------------------------
+多重实现：  依照上面定义的接口，进行多重实现
+-------------------------------------------------------
+public class Man implements Bread,Milk {  //接口的【实现类】Man
+  
+  public void eatBread() {    //实现了Bread接口中eatBread方法
+     System.out.println("吃面包");
+   }
+
+  public void drinkMilk() {   //实现了Milk接口中drinkMilk方法
+     System.out.println("喝牛奶");
+   }
+}
+
+public class Women implements Bread,Milk {   //接口的【实现类】Women
+  
+  public void eatBread() {    //实现了Bread接口中eatBread方法
+     System.out.println("吃面包～～～");
+   }
+
+  public void drinkMilk() {   //实现了Milk接口中drinkMilk方法
+     System.out.println("喝牛奶～～～");
+   }
+}
+
+这就是接口的多重实现了. 
+嗯....
+
+-------------------------------------------------------
+关于接口的作用：
+-------------------------------------------------------
+接口是软件编程的规范，可以降低耦合性。
+换句话说，可以让某个模块或功能能够被重复利用，这样只要写这功能一次代码就完了，其他地方要用到的，全部用接口调用来实现。
+
+接口的优势：
+1 “接口+实现”最常见的优势就是【实现类】和【接口】分离，在更换【实现类】的时候，不用更换【接口】功能。
+2.这对于做单元测试也非常有帮助。
+
+--------------------------------------------------------------------------------------------------------------
+关键字extends，表示对父类的继承，可以实现父类，也可以调用父类初始化。
+而且会覆盖父类定义的变量或者函数。在 Java 中，类的继承是单一继承，也就是说，一个子类只能拥有一个父类，所以 extends 只能继承一个类。
+
+类的继承格式:
+
+class 父类 {
+}
+
+class 子类 extends 父类 {
+}
+
+
+-------------------------------------------------------
+为什么需要继承？
+-------------------------------------------------------
+接下来我们通过实例来说明这个需求。
+
+开发动物类，其中动物分别为企鹅以及老鼠，要求如下：
+
+企鹅：属性（姓名，id），方法（吃，睡，自我介绍）
+老鼠：属性（姓名，id），方法（吃，睡，自我介绍）
+企鹅类
+
+public class Penguin { 
+    private String name; 
+    private int id; 
+    public Penguin(String myName, int  myid) { 
+        name = myName; 
+        id = myid; 
+    } 
+    public void eat(){ 
+        System.out.println(name+"正在吃"); 
+    }
+    public void sleep(){
+        System.out.println(name+"正在睡");
+    }
+    public void introduction() { 
+        System.out.println("大家好！我是"         + id + "号" + name + "."); 
+    } 
+}
+
+老鼠类
+
+public class Mouse { 
+    private String name; 
+    private int id; 
+    public Mouse(String myName, int  myid) { 
+        name = myName; 
+        id = myid; 
+    } 
+    public void eat(){ 
+        System.out.println(name+"正在吃"); 
+    }
+    public void sleep(){
+        System.out.println(name+"正在睡");
+    }
+    public void introduction() { 
+        System.out.println("大家好！我是"         + id + "号" + name + "."); 
+    } 
+}
+
+ 
+从这两段代码可以看出来，代码存在重复了，导致后果就是代码量大且臃肿，而且维护性不高(维护性主要是后期需要修改的时候，就需要修改很多的代码，容易出错)，所以要从根本上解决这两段代码的问题，就需要继承，将两段代码中相同的部分提取出来组成 一个父类：
+公共父类
+
+public class Animal { 
+    private String name;  
+    private int id; 
+    public Animal(String myName, int myid) { 
+        name = myName; 
+        id = myid;
+    } 
+    public void eat(){ 
+        System.out.println(name+"正在吃"); 
+    }
+    public void sleep(){
+        System.out.println(name+"正在睡");
+    }
+    public void introduction() { 
+        System.out.println("大家好！我是"         + id + "号" + name + "."); 
+    } 
+}
+ 
+这个Animal类就可以作为一个父类，然后企鹅类和老鼠类继承这个类之后，就具有父类当中的属性和方法，子类就不会存在重复的代码，维护性也提高，代码也更加简洁，提高代码的复用性（复用性主要是可以多次使用，不用再多次写同样的代码） 继承之后的代码：
+企鹅类
+public class Penguin extends Animal { 
+    public Penguin(String myName, int myid) { 
+        super(myName, myid); 
+    } 
+}
+
+老鼠类
+public class Mouse extends Animal { 
+    public Mouse(String myName, int myid) { 
+        super(myName, myid); 
+    } 
+}
+
+super：
+在继承关系中，父类的成员变量、局部变量、方法被隐藏被子类常常覆盖，这时需要引用父类成员变量、局部变量、方法。
+super.变量名，super.方法名，super.父类的构造方法；
+
+关键字this的用法：
+如果类的成员变量与局部变量重名，类的成员变量将被隐藏，如果要使用类的成员变量，需要使用this引用之。
+this.变量名，this.方法名，this.父类的构造方法；
+
+-------------------------------------------------------
+继承的特性
+-------------------------------------------------------
+1.子类拥有父类非private的属性，方法。
+2.子类可以拥有自己的属性和方法，即子类可以对父类进行扩展。
+3.子类可以用自己的方式实现父类的方法。
+Java的继承是单继承，但是可以多重继承，单继承就是一个子类只能继承一个父类，多重继承就是，例如A类继承B类，B类继承C类，所以按照关系就是C类是B类的父类，B类是A类的父类，这是java继承区别于C++继承的一个特性。
+4.提高了类之间的耦合性（继承的缺点，耦合度高就会造成代码之间的联系）。
