@@ -1,0 +1,218 @@
+Android Fragment控件
+
+Fragment: 分段
+
+-----------------------------------------------
+1、Fragment的产生与介绍
+-----------------------------------------------
+Android运行在各种各样的设备中，有小屏幕的手机，超大屏的平板,甚至电视。
+针对屏幕尺寸的差距，很多情况下，都是先针对手机开发一套App，然后拷贝一份，修改布局以适应平板,电视等超大屏的设备。
+
+难道无法做到一个App可以同时适应手机和平板吗??  
+Fragment的出现就是为了解决这样的问题。
+
+可以把Fragment当成Activity的一个界面的一个组成部分，甚至Activity的界面可以完全有不同的Fragment组成，
+而且，Fragment拥有
+    自己的生命周期；
+    能接收、处理用户的事件；-
+
+Fragment必须是依存Activity而存在的，因此Activity的生命周期, 会直接影响到Fragment的生命周期。
+
+官网这图很好的说明了两者生命周期的关系：
+
+    ActiVity State                  Fragment Callbacks
+ +-----------------------------------------------------+
+                              +------------------------+
+                              | onAttach(Activity)     |
+                              +----------+-------------+
+                                         |
+                              +----------v-------------+
+                              | onCreate()             |
+    Created                   +------+-----------------+
+                                     |
+                      +--------------v-----------------+
+                      | onCreateView(LayoutInflater, ViewGroup,Bundle)
+                      +-----------+--------------------+
+                                  |
+                      +-----------v--------------------+
+                      | onActivityCreated(Bundle)      |
+                      +-----------+--------------------+
+                                  |
++--------------------------------------------------------+
+                                  |
+                      +-----------v-------------------+
+    Started           |       onStart()               |
+                      +-----------+-------------------+
+                                  |
++--------------------------------------------------------+
+                                  |
+                      +-----------v-------------------+
+    Resumed           |       onResume()              |
+                      +-------------------------------+
++---------------------------------------------------------+
+                      +-----------v-------------------+
+    Paused            |       onPause()               |
+                      +-------------------------------+
++---------------------------------------------------------+
+                      +-----------v-------------------+
+    Stoped            |       onStop()                |
+                      +-------------------------------+
++---------------------------------------------------------+
+                      +-----------v-------------------+
+                      |    onDestoryView()            |
+                      +-------------------------------+
+                      +-----------v-------------------+
+    Destoryed         |    onDestory()                |
+                      +-------------------------------+
+                      +-----------v-------------------+
+                      |    onDetach()                 |
+                      +-------------------------------+
++---------------------------------------------------------+
+
+
+步骤：
+1、继承Fragment，重写onCreateView()决定Fragemnt的布局;
+2、在Activity中声明此Fragment，就当和普通的View一样;
+
+下面展示一个例子:
+用2个Fragment作为Activity的布局: 一个Fragment用于标题布局， 一个Fragment用于内容布局.
+
+-----------------------------------------
+标题布局Framgment部分:
+-----------------------------------------
+Title_Fragment 的布局文件:
+    <?xml version="1.0" encoding="utf-8"?>
+    <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+        android:layout_width="match_parent"
+        android:layout_height="45dp"
+        android:background="@drawable/title_bar" >
+     
+        <ImageButton
+            android:id="@+id/id_title_left_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="3dp"
+            android:background="@drawable/showleft_selector" />
+     
+        <TextView
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:gravity="center"
+            android:text="GPS_TEST"
+            android:textColor="#fff"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+---------------------------------------
+Title_Fragment.java文件: 
+---------------------------------------
+package com.shi.shi_fragments;
+import android.app.Fragment;
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.view.ViewGroup;
+import android.widget.ImageButton;
+import android.widget.Toast;
+ 
+public class Title_Fragment extends Fragment
+{
+	private ImageButton mLeftMenu;
+	@Override
+	public View onCreateView(LayoutInflater inflater, ViewGroup container,Bundle savedInstanceState)
+	{
+		View view = inflater.inflate(R.layout.fragment_title, container, false);
+		mLeftMenu = (ImageButton) view.findViewById(R.id.id_title_left_btn);
+		mLeftMenu.setOnClickListener(new OnClickListener()
+		{
+			@Override
+			public void onClick(View v)
+			{ ....}
+		});
+		return view;
+	}
+}
+----------------------------------------------
+内容布局Framgment部分:
+----------------------------------------------
+ContentFragment.xml布局文件:
+
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical" >
+ 
+    <TextView
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:gravity="center"
+        android:text="内容布局Fragment"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+</LinearLayout>
+------------------------------------------
+ContentFragment.java 文件：
+package com.shi.shi_fragments;
+ 
+import android.app.Fragment;
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+ 
+public class ContentFragment extends Fragment
+{
+	@Override
+	public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState)
+	{
+		return inflater.inflate(R.layout.fragment_content, container, false);
+	}
+}
+----------------------------------------
+Activity的布局文件：
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent" >
+ 
+    <fragment
+        android:id="@+id/id_fragment_title"
+        android:name="com.zhy.zhy_fragments.TitleFragment"
+        android:layout_width="fill_parent"
+        android:layout_height="45dp" />
+ 
+    <fragment
+        android:layout_below="@id/id_fragment_title"
+        android:id="@+id/id_fragment_content"
+        android:name="com.zhy.zhy_fragments.ContentFragment"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent" />
+</RelativeLayout>
+-----------------------------------------
+MainActivity.java文件：
+package com.shi.shi_fragments; 
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.Window;
+ 
+public class MainActivity extends Activity
+{
+	@Override
+	protected void onCreate(Bundle savedInstanceState)
+	{
+		super.onCreate(savedInstanceState);
+		requestWindowFeature(Window.FEATURE_NO_TITLE);
+		setContentView(R.layout.activity_main);
+	}
+}
+
+
+
+3.2 动态的使用Fragment：
+
+
+
+
