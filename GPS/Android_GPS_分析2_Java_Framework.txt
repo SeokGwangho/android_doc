@@ -1,14 +1,36 @@
 \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-1. Java Framework
+1. Java Framework层
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-GPSFramework源码位于：frameworks/base/location
+GPS Framework 源码位于：frameworks/base/location
 
 
+GPS层次架构如下：
+		-----------------------------------------------------
+		Applicatoin
+				Locaton Applications
+		-----------------------------------------------------
+		Framework
+			LocationManagerService, LocationManager,
+			LocationProvider,       LocationListener
+		-----------------------------------------------------
+		JNI
+			com_android_server_location_GpsLocationProvider
+		-----------------------------------------------------
+		HAL
+			gps_device_t, GpsInterface
+		-----------------------------------------------------
+		Kernel
+				GPS Driver
+		-----------------------------------------------------
+				GPS Device
+		-----------------------------------------------------
+
+
+GPS Framework层：
 
 1.1接口和类简介
 
-先对GPSFramework重要的接口和类作一个简单的介绍
-
+先对GPS Framework层重要的 接口 和 类 作一个简单的介绍
 ---------------------
 接口:
 ---------------------
@@ -32,7 +54,7 @@ LocationProvider //抽象类，用于提供位置提供者（Locationprovider）
 
 2. 使用Gps编程接口
 
-下面，我们用一个代码示例说明如何在应用层写一个简单的gps程序。
+下面，我们用一个代码示例，说明如何在应用层写一个简单的gps程序。
 
 首先在AndroidManifest.xml中添加位置服务权限:
 
@@ -168,27 +190,31 @@ public class gps_activity extends AppCompatActivity {
 
 
 --------------------------------------------------------------------------- 
-2.3.3接口和类分析
+2.3.3 接口 和 类 分析
 ---------------------------------------------------------------------------
-下面对相关的类或接口进行分析，LocationManager的代码文件位于：frameworks/base/location/java/location/LocationManager.java 
+下面对相关的 类 或 接口 进行分析。
+
+LocationManager的代码文件位于：frameworks/base/location/java/location/LocationManager.java 
 
 看其构造函数：
-
     public LocationManager(ILocationManager service) {  
             mService = service;  
-        }  
-
+    }  
 
 其中mService为ILocationManager接口类型，构造函数的参数为service，外部调用时传入LocationManagerService实例。
 LocationManager是android系统的gps位置信息系统服务，在稍后将会对其进行分析。
-由带参构造函数实例化LocationManager类的方式用得不多，一般用的方式是由getSystemService获得LocationManagerService服务，再强制转换为LocationManager。
 
-    例如，在代码示例中是这样获取gps服务的：
+由带参构造函数实例化LocationManager类的方式用得不多，
+一般用的方式是由 getSystemService() 获得 LocationManagerService服务，再强制转换为LocationManager。
+
+    获取gps服务例：
     LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);    
 
-这里的Context.LOCATION_SERVICE为”location”，标识gps服务。
+	//这里的Context.LOCATION_SERVICE 为 ”location”，标识gps服务。
 
-LocationManagerService服务是整个GpsFramework的核心，首先看它是如何加载的：
+
+LocationManagerService 服务是整个GpsFramework的核心，首先看它是如何加载的：
+
 代码文件位于：frameworks/base/services/java/com/android/server/systemserver.java
 
     …//省略其他代码  
@@ -203,7 +229,8 @@ LocationManagerService服务是整个GpsFramework的核心，首先看它是如�
     }  
 
 此处向ServiceManger系统服务管理器，注册了新的服务，其名称为”location”，类型为LocationManagerService。
-注册此服务后，Java应用程序可通过ServiceManager获得LocationManagerService的代理接口ILocationManager.Stub，从而调用LocationManagerService提供的接口函数。
+注册此服务后，Java应用程序可通过ServiceManager获得LocationManagerService的代理接口ILocationManager.Stub，
+从而调用LocationManagerService提供的接口函数。
 
 ILocationManager位于：
 frameworks/base/location/java/location/ILocationManager.aidl，其代码如下：
@@ -348,10 +375,12 @@ frameworks/base/services/java/com/android/server/LocationMangerService.java
             updateProvidersLocked();  
         }
 	
-在这里对GpsLocationProvider和NetworkLocationProvider类作了初始化，并添加到provider集合中。
-GpsLocationProvider和NetworkLocationProvider继承自LocationProviderInterface接口，
+在这里对
+GpsLocationProvider 和
+NetworkLocationProvider类 作了初始化，并添加到provider集合中。
 
-分别代表2种位置提供者(LocationProvider)：
+GpsLocationProvider 和 NetworkLocationProvider 继承自 LocationProviderInterface接口，分别代表2种位置提供者(LocationProvider)：
+
 （1）LocationManager.GPS_PROVIDER：
 		GPS模式，精度比较高，但是慢而且消耗电力，而且可能因为天气原因或者障碍物而无法获取卫星信息，另外设备可能没有GPS模块（2）LocationManager.NETWORK_PROVIDER：
 		通过网络获取定位信息，精度低，耗电少，获取信息速度较快，不依赖GPS模块。
