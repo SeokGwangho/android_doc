@@ -69,7 +69,6 @@ Fragment必须是依存Activity而存在的，因此Activity的生命周期, 会
                       +-------------------------------+
 +---------------------------------------------------------+
 
-
 步骤：
 1、继承Fragment，重写onCreateView()决定Fragemnt的布局;
 2、在Activity中声明此Fragment，就当和普通的View一样;
@@ -104,6 +103,7 @@ Title_Fragment 的布局文件:
             android:textSize="20sp"
             android:textStyle="bold" />
     </RelativeLayout>
+    
 ---------------------------------------
 Title_Fragment.java文件: 
 ---------------------------------------
@@ -180,14 +180,14 @@ Activity的布局文件：
  
     <fragment
         android:id="@+id/id_fragment_title"
-        android:name="com.zhy.zhy_fragments.TitleFragment"
+        android:name="com.shi.shi_fragments.TitleFragment"
         android:layout_width="fill_parent"
         android:layout_height="45dp" />
  
     <fragment
         android:layout_below="@id/id_fragment_title"
         android:id="@+id/id_fragment_content"
-        android:name="com.zhy.zhy_fragments.ContentFragment"
+        android:name="com.shi.shi_fragments.ContentFragment"
         android:layout_width="fill_parent"
         android:layout_height="fill_parent" />
 </RelativeLayout>
@@ -210,8 +210,91 @@ public class MainActivity extends Activity
 }
 
 
+以上就是把Fragment当成普通的View一样声明在Activity的布局文件中，
+然后所有控件的事件处理等代码都由各自的Fragment去处理。
+Activity变得干净，代码的可读性、复用性以及可维护性也提升了。
 
-3.2 动态的使用Fragment：
+====================================================================================================
+3.2 动态的使用Fragment： 
+  。。。
+
+
+
+====================================================================================================
+4.Fragment 常用的API
+====================================================================================================
+Fragment常用的三个类：
+
+android.app.Fragment 		//主要用于定义Fragment
+android.app.FragmentManager 	//主要用于在Activity中操作Fragment
+android.app.FragmentTransaction //保证一些列Fragment操作的原子性？
+
+获取FragmentManage：      
+getFragmentManager() 		// v4中，getSupportFragmentManager
+
+主要的操作都是FragmentTransaction的方法：
+FragmentTransaction transaction = fm.benginTransatcion();	//开启一个事务
+transaction.add() 
+
+往Activity中添加一个Fragment： 
+transaction.remove()
+从Activity中移除一个Fragment，如果被移除的Fragment没有添加到回退栈（回退栈后面会详细说），这个Fragment实例将会被销毁。
+
+
+transaction.replace()
+使用另一个Fragment替换当前的，实际上就是remove()然后add()的合体
+
+transaction.hide()
+隐藏当前的Fragment，仅仅是设为不可见，并不会销毁
+
+transaction.show()
+显示之前隐藏的Fragment
+
+detach()
+会将view从UI中移除,和remove()不同,此时fragment的状态依然由FragmentManager维护。
+
+attach()
+重建view视图，附加到UI上并显示。
+
+transatcion.commit()	//提交一个事务
+
+注意：常用Fragment的，可能会经常遇到这样Activity状态不一致： State loss 这样的错误
+
+主要是因为：commit方法一定要在Activity.onSaveInstance()之前调用。
+
+
+
+以上，基本是 
+操作Fragment的所有的方式了。在一个事务开启到提交可以进行多个的添加、移除、替换等操作。
+
+值得注意的是：
+如果你喜欢使用Fragment，一定要清楚这些方法，
+哪个会销毁实例，
+哪个会销毁视图，
+哪个仅仅只是隐藏，这样才能更好的使用它们。
+
+
+a、比如：我在FragmentA中的EditText填了一些数据，当切换到FragmentB时，如果希望会到A还能看到数据，则适合你的就是hide和show；也就是说，希望保留用户操作的面板，你可以使用hide和show，当然了不要使劲在那new实例，进行下非null判断。
+
+b、再比如：我不希望保留用户操作，你可以使用remove()，然后add()；或者使用replace()这个和remove,add是相同的效果。
+
+c、remove和detach有一点细微的区别，在不考虑回退栈的情况下，remove会销毁整个Fragment实例，而detach则只是销毁其视图结构，实例并不会被销毁。那么二者怎么取舍使用呢？如果你的当前Activity一直存在，那么在不希望保留用户操作的时候，你可以优先使用detach。
+
+上述已经介绍完成了Fragment常用的一些方法。
+
+相信看完，大家一定清楚了
+如何使用Fragment，、
+也能明白，曾经为何Fragment会出现一些列乱七八槽的问题，终究是因为：没有弄清楚其生命周期。
+
+
+接下来的问题：
+1、如何管理Fragment回退栈
+2、Fragment如何与Activity交互
+3、Fragment与Activity交互的最佳实践
+4、没有视图的Fragment的用处
+5、使用Fragment创建对话框
+6、如何与ActionBar，MenuItem集成等
+
 
 
 
