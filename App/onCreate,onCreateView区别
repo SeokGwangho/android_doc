@@ -1,0 +1,6 @@
+---------------------------------------
+onCreate(),onCreateView()区别：
+---------------------------------------
+onCreate()     是指创建该fragment。类似于Activity.onCreate，你可以在其中初始化除了view之外的东西。
+onCreateView() 是创建该fragment对应的视图，你必须在这里创建自己的视图,并返回给调用者.
+
