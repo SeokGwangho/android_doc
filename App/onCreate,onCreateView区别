@@ -4,3 +4,23 @@ onCreate(),onCreateView()区别：
 onCreate()     是指创建该fragment。类似于Activity.onCreate，你可以在其中初始化除了view之外的东西。
 onCreateView() 是创建该fragment对应的视图，你必须在这里创建自己的视图,并返回给调用者.
 
+
+    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+            Bundle savedInstanceState) {
+
+        mRes = getResources();
+        setupUnitPreferences();
+
+        View v = inflater.inflate(R.layout.gps_status, container,false);
+        ....
+        mLatitudeView  = v.findViewById(R.id.latitude);
+        mLongitudeView = v.findViewById(R.id.longitude);
+        mFixTimeView   = v.findViewById(R.id.fix_time);
+        mTTFFView      = v.findViewById(R.id.ttff);
+        mAltitudeView  = v.findViewById(R.id.altitude);
+        mAltitudeMslView = v.findViewById(R.id.altitude_msl);
+        ...
+                GpsTestActivity.getInstance().addListener(this);
+
+        return v;
+    }
