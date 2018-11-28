@@ -130,8 +130,10 @@ GpsSvStatus:
 			uint32_t    used_in_fix_mask;   /** Represents a bit mask indicating which SVs were used for computing the most recent position fix. */
 		} GpsSvStatus;  
 
-
-//上面几个数据结构的值，就是靠如下Callbacks函数集实现的。
+------------------------------------------------------------------------------------------------------
+//上面几个数据结构的值，就是靠如下Callbacks函数集实现的。而GpsInterface结构里有这个GpsCallback的指针。
+//下面怎么向上传的数据，自然就通了。
+------------------------------------------------------------------------------------------------------
 GpsCallbacks:
 		//回调函数定义
 	typedef void (* gps_location_callback)(GpsLocation* location);  //向上层()传递GPS位置信息
