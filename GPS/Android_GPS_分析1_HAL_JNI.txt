@@ -21,6 +21,7 @@ JNI和HAL这俩层，靠 const GpsInterface* 来交互: 即在HAL层定义的Gps
 
 Step2: HAL的open_gps--->
 
+
 //
 GPSInterface实体在gps_device_t里，gps_device_t在
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -130,6 +131,7 @@ GpsSvStatus:
 		} GpsSvStatus;  
 
 
+//上面几个数据结构的值，就是靠如下Callbacks函数集实现的。
 GpsCallbacks:
 		//回调函数定义
 	typedef void (* gps_location_callback)(GpsLocation* location);  //向上层()传递GPS位置信息
