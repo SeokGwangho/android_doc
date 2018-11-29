@@ -6,9 +6,6 @@
 
 Android定位服務都是位於location下，上面都有相關說明。
 
-有一點有需要說說的是：
-GpsStatus.NmeaListener 官方的說法是可以讀取NMEA資料，但是我這裡測試發現，並沒有讀取到NMEA的資料。
-查閱過一些資料，說是google在底層並沒有實現資料反饋的功能。有時間，需要檢視一下原始碼。
 -----------------------------------------------------------
 2、LocationManager定位
 -----------------------------------------------------------
@@ -32,6 +29,7 @@ locationManager.addGpsStatusListener(statusListener);
 //另外給出 通過network定位設定
 String LocateType= locationManager.NETWORK_PROVIDER;
 Location location = locationManager.getLastKnownLocation(LocateType);
+
 -----------------------------------------------------------
 3、GpsStatus監聽器
 -----------------------------------------------------------
