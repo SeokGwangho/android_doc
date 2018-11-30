@@ -25,9 +25,7 @@ Step2: HAL的open_gps--->
 //
 GPSInterface实体在gps_device_t里，gps_device_t在
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-首先来看看GPS模块的代码结构：
+预备知识：
 
 Framework：
 1.frameworks/base/location/java/android/location	       //这里目录是用来被App调用的，API包是android.location。
@@ -40,12 +38,64 @@ frameworks/base/core/jni/android_location_GpsLocationProvider.cpp
 				//JNI层只有一个文件，起到承上启下的作用。上层承接Framework，下层调用HAL层具体硬件抽象实现。
 
 HAL：Hardware Abstract Layer 硬件抽象层
-hardware/libhardware_legacy/gps
-hardware/libhardware_legacy/include/hardware_legacy/gps.h
+	hardware/libhardware_legacy/gps
+	hardware/libhardware_legacy/include/hardware_legacy/gps.h
 
-HAL层相当于一个linux应用程序接口，通过open，close，ioctl...等操作，操作硬件设备。
-Android的源代码只实现了模拟器的gps接口，具体在文件gps_qemu.c中。
-在2.2版本中提供了对QCOM公司的gps的实现，在以下目录：/hardware/qcom。
+	HAL层相当于一个linux应用程序接口，通过open，close，ioctl...等操作，操作硬件设备。
+	Android的源代码只实现了模拟器的gps接口，具体在文件gps_qemu.c中。
+	在2.2版本中提供了对QCOM公司的gps的实现，在以下目录：/hardware/qcom。
+
+
+几个重要的数据结构：
+1. GpsInterface 接口是gps模块中最重要的数据结构，它是底层驱动实现的接口，如果要porting到自己的板子上，就需要实现这些接口。
+	该接口的定义在gps.h中，模拟器实现在gps_qemu.c中。
+	
+2. GpsCallbacks回调函数
+这个是回调函数结构体，定义也在gps.h中。它们的实现是在android_location_GpsLocationProvider.cpp中，google已实现，我们不需要做任何动作。
+
+3. GpsLocation
+表示Locatin数据信息，底层驱动获得Location的raw信息，通常是nmea码，然后通过解析就得到了location信息。
+
+initialize函数
+
+LocationManagerService.java[frameworks/base/services/java/com/android/server]
+
+private void initialize() {
+        // Create a wake lock, needs to be done before calling loadProviders() below
+        PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+        mWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_KEY);
+        // Load providers
+        loadProviders();
+
+      ...
+
+initialize函数中最重要的就是loadProviders函数了，该函数调用loadProvidersLocked，然后loadProvidersLocked函数又调用_loadProvidersLocked函数。为什么要这么折腾呢?
+
+先来看一部分的_loadProvidersLocked函数：
+
+private void _loadProvidersLocked() {
+        // Attempt to load "real" providers first
+        if (GpsLocationProvider.isSupported()) {
+            // Create a gps location provider
+            GpsLocationProvider gpsProvider = new GpsLocationProvider(mContext, this);
+            mGpsStatusProvider = gpsProvider.getGpsStatusProvider();
+            mNetInitiatedListener = gpsProvider.getNetInitiatedListener();
+            addProvider(gpsProvider);
+            mGpsLocationProvider = gpsProvider;
+        }
+        ...
+注意这个if语句，很重要，因为在这个语句中得到了HAL层的GPS接口GpsInterface。
+就是通过调用GpsLocationProvider的isSupported()函数才调用到gps.cpp[hardware/libhardware_legacy/gps]中的gps_get_interface()。
+这个isSupported函数才是第一个吃螃蟹的人。（而不是JNI层的init函数，这个下面会提到)。
+
+GpsLocationProvider.cpp [frameworks/base/location/java/com/android/internal/location]
+public static boolean isSupported() {
+        return native_is_supported();
+    }
+然而isSupported只有一句话，然后就调用native方法，也就是JNI层定义的方法。
+native_is_supported函数对于JNI层是android_location_GpsLocationProvider_is_supported方法。
+
+
 
 
 
