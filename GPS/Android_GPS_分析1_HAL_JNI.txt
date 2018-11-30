@@ -27,6 +27,29 @@ GPSInterface实体在gps_device_t里，gps_device_t在
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
+首先来看看GPS模块的代码结构：
+
+Framework：
+1.frameworks/base/location/java/android/location	       //这里目录是用来被App调用的，API包是android.location。
+2.frameworks/base/location/java/com/android/internal/location  //这个目录是Framework对Location服务的内部实现。
+3.framework/services/java/com/android/server			//这个目录只有一个文件是Location服务对内部实现的一种封装。
+            |-- LocationManagerService.java 			
+
+JNI：
+frameworks/base/core/jni/android_location_GpsLocationProvider.cpp
+				//JNI层只有一个文件，起到承上启下的作用。上层承接Framework，下层调用HAL层具体硬件抽象实现。
+
+HAL：Hardware Abstract Layer 硬件抽象层
+hardware/libhardware_legacy/gps
+hardware/libhardware_legacy/include/hardware_legacy/gps.h
+
+HAL层相当于一个linux应用程序接口，通过open，close，ioctl...等操作，操作硬件设备。
+Android的源代码只实现了模拟器的gps接口，具体在文件gps_qemu.c中。
+在2.2版本中提供了对QCOM公司的gps的实现，在以下目录：/hardware/qcom。
+
+
+
+
 
 
 GPS层次架构如下：
