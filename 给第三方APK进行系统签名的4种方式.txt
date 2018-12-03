@@ -1,0 +1,120 @@
+给第三方apk进行系统签名的几种方式
+
+
+一、Android中的签名
+系统默认的四种签名类型：
+
+四组默认签名, 供Android.mk在编译APK时使用：
+
+	1、testkey ：普通APK，默认情况下使用。
+	2、platform：该APK完成一些系统的核心功能。
+			经过对系统中存在的文件夹的访问测试，
+			这种方式编译出来的APK, 所在进程的UID为system。
+	3、shared  ：该APK需要和home/contacts进程共享数据。
+	4、media   ：该APK是media/download系统中的一环。
+
+
+应用程序的Android.mk中有一个 LOCAL_CERTIFICATE 字段，由它指定用哪个key签名，未指定的默认用testkey.
+
+
+
+
+系统默认的四种签名类型文件的位置：
+$(android_src)/build/target/product/security$ ls
+media.pk8       platform.pk8       README   shared.pk8       testkey.pk8
+media.x509.pem  platform.x509.pem   shared.x509.pem  testkey.x509.pem
+
+
+
+-----------------------------------------------------------------------------
+二、对apk进行签名
+-----------------------------------------------------------------------------
+工作中有时会遇到一些apk签名不同，导致无法安装的问题。
+
+
+场景一：
+    	有一个第三方apk（具有系统权限），无法安装在我们自己的Android机器上，提示错误，导致无法安装。
+    	这是由于该APK具有系统权限，而系统签名与我们的Android设备系统签名不一致。
+	Android检测到系统签名不一致，由于安全因素考虑，就阻止安装了。   
+
+
+    解决方法：使用自己的Android签名工具, 给apk重新签名。
+
+
+    解决方法详细：
+    (1) Android的签名文件, 存放于系统源码的 build/target/product/security/目录下,    
+    	该目录下有 
+		media.pk8、media.x509.pem、platform.pk8、platform.x509.pem、
+		shared.pk8、shared.x509.pem、testkey.pk8、testkey.x509.pem
+	等签名文件，
+	不同的签名文件，对应不同的权限!!
+	Android默认的签名文件为testkey.pk8、testkey.x509.pem。
+
+    (2) Android自带的签名工具为 signapk.jar， 
+	可以在源码编译目录out中找到，具体路径为：out/host/linux-x86/framework/signapk.jar
+	以上APK具有系统权限，重新签名,应该使用platform签名文件进行签名。
+
+
+	签名方法：
+		将对应权限的签名文件platform.pk8、platform.x509.pem，
+		签名工具 signapk.jar， 
+		以及需要签名的apk（假设 old.apk） 
+	放到同一目录下，打开linux终端（windows cmd也可以），进入该目录，
+	
+	进行重新签名：
+		java -jar signapk.jar platform.x509.pem platform.pk8 old.apk new.apk
+	
+	重新生成的new.apk, 就可以安装在我们的Android设备上了。
+
+    
+
+场景二：
+	注：
+	此场景二, 其实也可以直接将APK源码,放在Android系统源码的环境下用make来编译，
+	需要编写Android.mk，加入LOCAL_CERTIFICATE := platform，
+	可以直接使用mm编译apk, 编译出来的APK同样可以顺利安装在我们自己的Android设备上。
+
+
+	
+	具有apk源码，同样是具备系统权限的，
+	当我们将apk源码导入Eclipse中，使用 Run as --> Android application 编译安装APK时, Eclise同样会提示场景一的错误信息，原因也是一样。
+	我们同样可以将Eclipse生成的apk按照场景一的方法进行重新签名，再安装到我们的设备上。
+	但是，有时可能我们会经常修改apk源码进行调试验证，如果每次都把apk拿出来进行重新签名，再安装，这样确实麻烦了一些。
+
+	Eclipse是支持使用自己的系统签名工具进行APK打包签名的。
+	使用这种方法，可以快速而方便地对APK进行系统签名，并将其安装到我们的Android设备上。
+
+
+	也就是利用Eclipse/Android Studio IDE来自动签名...
+
+
+	下面说一下具体做法：
+	步骤一：同样取源码目录build\target\product\security 目录下的platform.pk8 platform.x509.pem放到某一个目录下
+	步骤二：进入该目录，生成shared.priv.pem
+		openssl pkcs8 -in platform.pk8 -inform DER -outform PEM -out shared.priv.pem -nocrypt
+
+	步骤三：生成pkcs12
+		openssl pkcs12 -export -in platform.x509.pem -inkey shared.priv.pem -out shared.pk12 -name androiddebugkey
+
+		Enter Export Password:
+		Verifying - Enter Export Password:
+
+		这里会提示输入密码，默认密码是android，如是自己制作的key，输入对应的密码。
+
+
+	步骤四：生成debug.keystore，Eclipse需要使用该keystore.
+		keytool -importkeystore -deststorepass android -destkeypass android -destkeystore debug.keystore \
+			-srckeystore shared.pk12 -srcstoretype PKCS12 -srcstorepass android -alias androiddebugkey
+
+
+	步骤五：在Eclipse的  Windows/Preferences/Android/Build 中设置"Custom debug keystore"
+		为刚才步骤四生成的debug.keystore即可直接run安装调试apk.
+		这样的话，就可以不用再去用signapk.jar，如java -jar signapk.jar platform.x509.pem platform.pk8 *.apk **.apk进行签名了。
+
+
+
+
+场景三：
+一个简单的Android.mk（APK源码只包含java文件，不含JNI代码）文件可以参考以下写法:
+	其中 XXX 修改为你的apk名字。
+	进入该源码目录，执行mm命令，即可在out/target/product/$PRODUCT_NAME/system/app目录下生成 xxx.apk
