@@ -1,0 +1,80 @@
+Android_权限_sharedUserId和签名.txt
+    
+    安装在设备中的每一个apk文件，Android给每个APK进程分配一个单独的用户空间,
+    其manifest中的userid就是对应一个Linux用户都会被分配到一个属于自己的统一的Linux用户ID，
+    并且为它创建一个沙箱，以防止影响其他应用程序（或者其他应用程序影响它）。
+    
+    用户ID 在APK安装到设备中时被分配，并且在这个设备中保持它的永久性。
+
+通过Shared User id,拥有同一个User id的多个APK可以配置成运行在同一个进程中,所以默认就是可以互相访问任意数据. 
+也可以配置成运行成不同的进程, 同时可以访问其他APK的数据目录下的数据库和文件,就像访问本程序的数据一样.
+
+
+
+对于一个APK来说，如果要使用某个共享UID的话，必须做三步：
+1、在Manifest节点中增加android:sharedUserId属性。
+2、在Android.mk中增加LOCAL_CERTIFICATE的定义。
+      如果增加了上面的属性但没有定义与之对应的LOCAL_CERTIFICATE的话，APK是安装不上去的。
+      提示错误是：Package com.test.MyTest has no signatures that match those in shared user android.uid.system; ignoring!
+      也就是说，仅有相同签名和相同sharedUserID标签的两个应用程序签名都会被分配相同的用户ID。
+      例如所有和media/download相关的APK都使用android.media作为sharedUserId的话，那么它们必须有相同的签名media。
+
+3、把APK的源码放到packages/apps/目录下，用mm进行编译。
+--------------------------------------------------------
+举例说明一下:
+--------------------------------------------------------
+系统中所有使用android.uid.system作为共享UID的APK，都会首先在manifest节点中增加android:sharedUserId="android.uid.system"，然后在Android.mk中增加LOCAL_CERTIFICATE := platform。可以参见Settings等
+系统中所有使用android.uid.shared作为共享UID的APK，都会在manifest节点中增加android:sharedUserId="android.uid.shared"，然后在Android.mk中增加LOCAL_CERTIFICATE := shared。可以参见Launcher等
+系统中所有使用android.media作为共享UID的APK，都会在manifest节点中增加android:sharedUserId="android.media"，然后在Android.mk中增加LOCAL_CERTIFICATE := media。可以参见Gallery等。
+另外，应用创建的任何文件都会被赋予应用的用户标识，并且正常情况下不能被其他包访问。当通过getSharedPreferences（String，int）、openFileOutput（String、int）或者openOrCreate Database（String、int、SQLiteDatabase.CursorFactory）创建一个新文件时，开发者可以同时或分别使用MODE_WORLD_READABLE和MODE_WORLD_RITEABLE标志允许其他包读/写此文件。当设置了这些标志后，这个文件仍然属于自己的应用程序，但是它的全局读/写和读/写权限已经设置，所以其他任何应用程序可以看到它。
+
+
+关于签名：
+build/target/product/security目录中有四组默认签名供Android.mk在编译APK使用：
+
+1、testkey：普通APK，默认情况下使用。
+2、platform：该APK完成一些系统的核心功能。经过对系统中存在的文件夹的访问测试，这种方式编译出来的APK所在进程的UID为system。
+3、shared：该APK需要和home/contacts进程共享数据。
+4、media：该APK是media/download系统中的一环。
+
+应用程序的Android.mk中有一个LOCAL_CERTIFICATE字段，由它指定用哪个key签名，未指定的默认用testkey.
+
+ 
+
+对于使用eclipse编译的apk，可以使用signapk.jar来手动进行签名，其源码在build/tools/signapk下，
+编译后在out/host/linux-x86/framework/signapk.jar，也可以从网上下载。
+
+使用方法，以platform为例：
+java -jar ./signapk　platform.x509.pem platform.pk8 input.apk output.apk  
+(platform.x509.pem platform.pk8在build/target/product/security获取)
+
+
+
+sharedpreference 的互访
+
+1:访问sharedpreference
+
+A.apk 访问 B.apk中的 sharedpreference
+
+ 
+B.apk:
+Activity中
+SharedPreferences settings = getSharedPreferences("name_preferences " ,Context.MODE_WORLD_READABLE);
+androidmanifest.mk中
+package="com.eddy.android.name_preferences "
+
+
+A.apk
+Activity中
+    SharedPreferences settings;
+    Context otherAppContext;
+        try {
+            otherAppContext = createPackageContext("com.eddy.android.name_preferences ", Context.CONTEXT_IGNORE_SECURITY);
+            settings = otherAppContext.getSharedPreferences("com.eddy.android.name_preferences",Context.MODE_WORLD_READABLE);
+        } catch (NameNotFoundException e) {
+            e.printStackTrace();
+        }
+
+
+androidmanifest.mk中
+android:sharedUserId="com.eddy.android.name_preferences " //--为B.apk 的package
