@@ -30,13 +30,11 @@ shell指令有的是分权限的，所以需要根据你的具体指令，看看
         }  
         try {  
             if(null==process){  
-//              process = Runtime.getRuntime().exec("sh");  //系统签名，push到app目录下用这个这个  
-                process = Runtime.getRuntime().exec("su");  //有root权限的用这个;  
+//              process = Runtime.getRuntime().exec("sh");  //方式1，用这个。
+                process = Runtime.getRuntime().exec("su");  //方式2，有root权限的用这个。  
                 os = new DataOutputStream(process.getOutputStream());  
             }  
-            if (MyLog.isDyeLevel()) {  
-                MyLog.log("lcd", MyLog.DYE_LOG_LEVEL, "execCommand :" + command);  
-            }  
+              
             os.write(command.getBytes());  
             os.writeBytes("\n");  
             os.flush();  
@@ -74,10 +72,10 @@ shell指令有的是分权限的，所以需要根据你的具体指令，看看
               
             try {  
       
-} catch (Exception e) {  
-    e.printStackTrace();  
-}  
-        }  
+            } catch (Exception e) {  
+                e.printStackTrace();  
+            }  
+    }  
         os.writeBytes(COMMAND_EXIT);  
         os.flush();  
   
