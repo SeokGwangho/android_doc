@@ -1,0 +1,121 @@
+-------------------------------------------------------
+Android App发送shell命令
+-------------------------------------------------------
+shell指令有的是分权限的，所以需要根据你的具体指令，看看需不需要有root权限； 
+
+权限介绍： 
+如果不需要root权限的shell指令，那可以直接通过Android提供的exec发送；
+如果是需要root权限的shell指令，有2种操作方式：
+
+方式1、标准做法(推荐做法)： 
+  a、为APP添加：   android:sharedUserId="android.uid.system"  
+  b、给APP签上系统签名
+  c、将签名好的app push到system/app/目录下，重启板子；   
+  这样，就可以使用exec，正常发送 任何指令； 
+
+
+方式2、屌丝做法： 
+    设备获取root权限，APP运行时授予root权限； 
+    发送时用exec("su")发送； 
+    这种方法在调试阶段是很有用的。
+
+
+------------------------------------------------------------
+参考代码： 
+    Process process = null;  
+    DataOutputStream os = null;  
+    public void sendTest(String command){  
+        if (command == null) {  
+            return;
+        }  
+        try {  
+            if(null==process){  
+//              process = Runtime.getRuntime().exec("sh");  //系统签名，push到app目录下用这个这个  
+                process = Runtime.getRuntime().exec("su");  //有root权限的用这个;  
+                os = new DataOutputStream(process.getOutputStream());  
+            }  
+            if (MyLog.isDyeLevel()) {  
+                MyLog.log("lcd", MyLog.DYE_LOG_LEVEL, "execCommand :" + command);  
+            }  
+            os.write(command.getBytes());  
+            os.writeBytes("\n");  
+            os.flush();  
+        }catch(Exception e){  
+            e.printStackTrace();  
+        }  
+    }  
+
+在不发送时记得关闭流； 
+需要实时发送，     定义了全局变量；
+不需要实时发送，就可以定义局部变量； 
+
+----------------------------------------------------------------------------------
+下面片段是：阻塞式的，会造成系统卡顿，不推荐使用. 
+----------------------------------------------------------------------------------
+    Process process = null;  
+    BufferedReader successResult = null;  
+    BufferedReader errorResult = null;  
+    StringBuilder successMsg = null;  
+    StringBuilder errorMsg = null;  
+  
+    DataOutputStream os = null;  
+    try {  
+        process = Runtime.getRuntime().exec(isRoot ? COMMAND_SU : COMMAND_SH);  
+        os = new DataOutputStream(process.getOutputStream());  
+        for (String command : commands) {  
+            if (command == null) {  
+                continue;  
+            }  
+  
+            // donnot use os.writeBytes(commmand), avoid chinese charset error  
+            os.write(command.getBytes());  
+            os.writeBytes(COMMAND_LINE_END);  
+            os.flush();  
+              
+            try {  
+      
+} catch (Exception e) {  
+    e.printStackTrace();  
+}  
+        }  
+        os.writeBytes(COMMAND_EXIT);  
+        os.flush();  
+  
+        result = process.waitFor();  
+        // get command result  
+        if (isNeedResultMsg) {  
+            successMsg = new StringBuilder();  
+            errorMsg = new StringBuilder();  
+            successResult = new BufferedReader(new InputStreamReader(process.getInputStream()));  
+            errorResult = new BufferedReader(new InputStreamReader(process.getErrorStream()));  
+            String s;  
+            while ((s = successResult.readLine()) != null) {  
+                successMsg.append(s);  
+            }  
+            while ((s = errorResult.readLine()) != null) {  
+                errorMsg.append(s);  
+            }  
+        }  
+    } catch (IOException e) {  
+        e.printStackTrace();  
+    } catch (Exception e) {  
+        e.printStackTrace();  
+    } finally {  
+        try {  
+            if (os != null) {  
+                os.close();  
+            }  
+            if (successResult != null) {  
+                successResult.close();  
+            }  
+            if (errorResult != null) {  
+                errorResult.close();  
+            }  
+        } catch (IOException e) {  
+            e.printStackTrace();  
+        }  
+  
+        if (process != null) {  
+            process.destroy();  
+        }  
+    }  
