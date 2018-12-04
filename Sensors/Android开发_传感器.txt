@@ -4,123 +4,223 @@ Android开发_传感器.txt
 传感器(Sensor)是一种检测装置，能感受到被测量的信息，并能将感受到的信息，按一定规律变换成为电信号或其他所需形式的信息输出，
 以满足信息的传输、处理、存储、显示、记录和控制等要求。
 
-可以说，传感器是人类五官的延长，又称之为电五官。
+可以说，传感器是人类五官的延长。
+
+
+Android系统提供了对传感器的支持，如果手机的硬件提供了这些传感器的话，那么我们就可以通过代码获取手机外部的状态。
+
+比如说手机的摆放状态、外界的磁场、温度和压力等等。
+
+对于开发者来说，开发传感器十分简单:
+		只需要注册监听器，接收回调的数据就行了，
+
+
+
+大概三歩：
+
+第一步:
+	// 获取传感器管理对象
+	SensorManager mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
+
+第二步:
+	// 获取传感器的类型(TYPE_ACCELEROMETER:加速度传感器)
+	mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+
+	这里我们除了可以获取加速度传感器之外，还可以获取其他类型的传感器，如：
+	* Sensor.TYPE_ORIENTATION：方向传感器。
+	* Sensor.TYPE_GYROSCOPE：陀螺仪传感器。
+	* Sensor.TYPE_MAGNETIC_FIELD：磁场传感器。
+	* Sensor.TYPE_GRAVITY：重力传感器。
+	* Sensor.TYPE_LINEAR_ACCELERATION：线性加速度传感器。
+	* Sensor.TYPE_AMBIENT_TEMPERATURE：温度传感器。
+	* Sensor.TYPE_LIGHT：光传感器。
+	* Sensor.TYPE_PRESSURE：压力传感器。
+
+第三步:
+	在onResume()方法中监听传感器传回的数据：
+
+	@Override
+	protected void onResume() {
+	    super.onResume();
+	    // 为加速度传感器注册监听器
+	    mSensorManager.registerListener(new SensorEventListener() {
+		// 当传感器的值改变的时候回调该方法
+		@Override
+		public void onSensorChanged(SensorEvent event) {
+
+		}
+		// 当传感器精度发生改变时回调该方法
+		@Override
+		public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+		}
+	    }, mSensor, SensorManager.SENSOR_DELAY_GAME);
+	}
+
+	其中，registerListener(SensorEventListener listener, Sensor sensor,int samplingPeriodUs)的三个参数说明如下：
+	listener：监听传感器时间的监听器，该监听器需要实现SensorEventListener接口。
+	sensor：传感器对象。
+	samplingPeriodUs：指定获取传感器频率，一共有如下几种：
+	* SensorManager.SENSOR_DELAY_FASTEST：最快，延迟最小，同时也最消耗资源，一般只有特别依赖传感器的应用使用该频率，否则不推荐。
+	* SensorManager.SENSOR_DELAY_GAME：适合游戏的频率，一般有实时性要求的应用适合使用这种频率。
+	* SensorManager.SENSOR_DELAY_NORMAL：正常频率，一般对实时性要求不高的应用适合使用这种频率。
+	* SensorManager.SENSOR_DELAY_UI：适合普通应用的频率，这种模式比较省电，而且系统开销小，但延迟大，因此只适合普通小程序使用。
+
+	并在onStop()方法中取消注册：
+
+	@Override
+	protected void onStop() {
+	    super.onStop();
+	    // 取消监听
+	    mSensorManager.unregisterListener(this);
+	}
+
+以上3步、就完成了监听加速度传感器的开发.
+
+
+
+
+
+
+
+
+
+
+
+正文：
 ---------------------------------------------------------
 传感器类型:
 
     Sensor.TYPE_AMBIENT_TEMPERATURE;    //温度传感器（API 14引入Android 4.0）
-    Sensor.TYPE_ACCELEROMETER;          加速度传感器
-    Sensor.TYPE_GRAVITY;重力传感器
-    Sensor.TYPE_LINEAR_ACCELERATION;线性加速度传感器
-    Sensor.TYPE_GYROSCOPE;陀螺仪传感器
-    Sensor.TYPE_ROTATION_VECTOR;设备的方向，表示为三个轴的角度组合（旋转向量）
-    Sensor.TYPE_MAGNETIC_FIELD;磁力传感器
-    Sensor.TYPE_PROXIMITY;近距离传感器
-    Sensor.TYPE_RELATIVE_HUMIDITY;相对湿度传感器（API 14引入 Android 4.0）
-    Sensor.TYPE_LIGHT;环境光传感器
+    Sensor.TYPE_ACCELEROMETER;          //加速度传感器
+    Sensor.TYPE_GRAVITY;		//重力传感器
+    Sensor.TYPE_LINEAR_ACCELERATION;	//线性加速度传感器
+    Sensor.TYPE_GYROSCOPE;		//陀螺仪传感器
+    Sensor.TYPE_ROTATION_VECTOR;	//设备的方向，表示为三个轴的角度组合（旋转向量）
+    Sensor.TYPE_MAGNETIC_FIELD;		//磁力传感器
+    Sensor.TYPE_PROXIMITY;		//近距离传感器
+    Sensor.TYPE_RELATIVE_HUMIDITY;	//相对湿度传感器（API 14引入 Android 4.0）
+    Sensor.TYPE_LIGHT;			//环境光传感器
+
+
 ---------------------------------------------------------
-使用传感器
+使用传感器:
 
-获取SensorManager管理器
+获取SensorManager管理器: 	
+	getSystemService(Context.SENSOR_SERVICE)	//通过SensorManager获取传感器
 
-getSystemService(Context.SENSOR_SERVICE)
 
-通过SensorManager获取传感器
+注册传感器监听:
+	SensorManager.registerListener(SensorEventListener listener, Sensor sensor, int samplingPeriodUs)
+	
+	Parameters:	
+		listener：监听器
+		sensor：传感器
+		samplingPeriodUs：采集周期
 
-注册传感器监听
 
-SensorManager.registerListener(SensorEventListener listener, Sensor sensor, int samplingPeriodUs)
+移除传感器监听:
+ 	SensorManager.unregisterListener() 
 
-    listener：监听器
-    sensor：传感器
-    samplingPeriodUs：采集周期
 
-移除传感器监听
-
- SensorManager.unregisterListener() 
 ---------------------------------------------------------
-涉及相关类
-SensorManager
-
-    List< Sensor> getSensorList(Sensor.type) 获取传感器（多个）
-
-    Sensor getDefaultSensor(Sensor.type) 获取默认传感器
-
-    boolean cancelTriggerSensor(TriggerEventListener listener, Sensor sensor)取消接收的触发事件为触发传感器。
-
-    boolean flush(SensorEventListener listener)刷新所有传感器的FIFO注册侦听器。
-
-    float getAltitude(float p0, float p)计算海拔米的海平面大气压力和压力。
-
-    void getAngleChange(float[] angleChange, float[] R, float[] prevR)计算两个旋转矩阵之间的角度变化。
-
-    float getInclination(float[] I)计算从我返回getRotationMatrix(float[], float[], float[], float[])倾斜弧度矩阵地磁倾角
-
-    float[] getOrientation(float[] R, float[] values)计算基于旋转矩阵设备的方向。
-
-    void getQuaternionFromVector(float[] Q, float[] rv)辅助功能旋转向量转换为四元数归。给定一个旋转矢量（大概从ROTATION_VECTOR传感器）时，返回一个归四元阵列Q的四元数的形式存储在[W，X，Y，Z]
-
-    boolean getRotationMatrix(float[] R, float[] I, float[] gravity, float[] geomagnetic)可以计算出旋转矩阵
-
-    void getRotationMatrixFromVector(float[] R, float[] rotationVector)辅助函数来旋转矢量转换为旋转矩阵。
-
-    boolean remapCoordinateSystem(float[] inR, int X, int Y, float[] outR)旋转供给旋转矩阵，以便它表示不同的坐标系中。
-
-    boolean requestTriggerSensor(TriggerEventListener listener, Sensor sensor)请接受触发事件的触发传感器。
+涉及相关类:
 ---------------------------------------------------------
-Sensor
-    int getFifoMaxEventCount() 获取该传感器能分批处理的事件的最大数量。
-    如果这个值是零，表明批处理模式不支持此传感器。如果其他应用程序登记到成批的传感器，可以进行批处理事件的实际数目可能是较小的，因为硬件FIFO将被部分用于批处理的另一传感器。
 
-    int getFifoReservedEventCount() 保留此传感器中的分批方式的FIFO的事件数。给出了对可批处理事件的最小数量的保证。
+SensorManager:
 
-    int getMaxDelay() 传感器最大延迟（微秒）
-    此值仅用于连续和按变化的传感器所定义。它是对应于该传感器支持的最低频率两个传感事件之间的延迟。当较低的频率通过registerListener请求（）事件将在该频率产生代替。它可以用于估计当批量FIFO可以充分。旧设备可以将该值设置为零。忽略此值的情况下为负数或零。
+	List< Sensor> getSensorList(Sensor.type) 	//获取传感器（多个）
 
-    int getMinDelay() 传感器最小延迟（微秒）
+	Sensor getDefaultSensor(Sensor.type) 	//获取默认传感器
 
-    float getMaximumRange() 获取传感器最大值
+	boolean cancelTriggerSensor(TriggerEventListener listener, Sensor sensor)	//取消接收的触发事件为触发传感器。
 
-    String getName() 获取传感器名称
+	boolean flush(SensorEventListener listener)					//刷新所有传感器的FIFO注册侦听器。
 
-    float getPower() 获取传感器耗电量
+	float getAltitude(float p0, float p)					//计算海拔米的海平面大气压力和压力。
 
-    int getReportingMode() 报告模式为输入传感器，REPORTING_MODE_* 常量
-    REPORTING_MODE_CONTINUOUS
-    REPORTING_MODE_ON_CHANGE
-    REPORTING_MODE_ONE_SHOT
-    REPORTING_MODE_SPECIAL_TRIGGER
+	void getAngleChange(float[] angleChange, float[] R, float[] prevR)		//计算两个旋转矩阵之间的角度变化。
 
-    float getResolution() 获取在传感器单元中的传感器的分辨率
+	float getInclination(float[] I)				//计算从我返回getRotationMatrix(float[], float[], float[], float[])倾斜弧度矩阵地磁倾角
 
-    String getStringType() 该传感器作为字符串的类型。
+	float[] getOrientation(float[] R, float[] values)		//计算基于旋转矩阵设备的方向。
 
-    int getType() 获取该传感器的类型
+	void getQuaternionFromVector(float[] Q, float[] rv)		//辅助功能旋转向量转换为四元数归。
+								//给定一个旋转矢量（大概从ROTATION_VECTOR传感器）时，返回一个归四元阵列Q的四元数的形式存储在[W，X，Y，Z]
 
-    String getVendor() 获取传感器的供应商
+	boolean getRotationMatrix(float[] R, float[] I, float[] gravity, float[] geomagnetic)	//可以计算出旋转矩阵
 
-    int getVersion() 传感器模块的版本
+	void getRotationMatrixFromVector(float[] R, float[] rotationVector) 			//辅助函数来旋转矢量转换为旋转矩阵。
 
-    boolean isWakeUpSensor() 当传感器是唤醒状态返回true
----------------------------------------------------------
-SensorEventListener
+	boolean remapCoordinateSystem(float[] inR, int X, int Y, float[] outR)			//旋转供给旋转矩阵，以便它表示不同的坐标系中。
 
-    onSensorChanged(SensorEvent) 当传感器值发生改变时
-    SensorEvent
-    values数组，传感器值，该值根据传感器类型不同返回不同
-    sensor产生事件的传感器
-    accuracy这个事件的准确性
-    timestamp时间发生周期纳秒
-    onAccuracyChanged(Sensor,int) 当传感器的精度发生变化时
-    用以下四个状态常量之一来代表的
-    SENSOR_STATUS_ACCURACY_LOW：传感器报告低精度值
-    SENSOR_STATUS_ACCURACY_MEDIUM：传感器报告平均精度值
-    SENSOR_STATUS_ACCURACY_HIGH：传感器报告高精度值
-    SENSOR_STATUS_UNRELIABLE：传感器报告的精度值不可靠
+	boolean requestTriggerSensor(TriggerEventListener listener, Sensor sensor)			//请接受触发事件的触发传感器。
+
+
+Sensor:
+
+	int getFifoMaxEventCount()	//获取该传感器能分批处理的事件的最大数量。
+					//如果这个值是零，表明批处理模式不支持此传感器。
+				//如果其他应用程序登记到成批的传感器，可以进行批处理事件的实际数目可能是较小的，因为硬件FIFO将被部分用于批处理的另一传感器。
+
+	int getFifoReservedEventCount() //保留此传感器中的分批方式的FIFO的事件数, 给出了对可批处理事件的最小数量的保证。
+
+	int getMaxDelay() 		//传感器最大延迟（微秒）
+					//此值仅用于连续和按变化的传感器所定义。它是对应于该传感器支持的最低频率两个传感事件之间的延迟。
+				//当较低的频率通过registerListener请求（）事件将在该频率产生代替。它可以用于估计当批量FIFO可以充分。旧设备可以将该值设置为零。忽略此值的情况下为负数或零。
+
+	int getMinDelay() 		//传感器最小延迟（微秒）
+
+	float getMaximumRange() 	//获取传感器最大值
+
+	String getName() 		//获取传感器名称
+
+	float getPower() 		//获取传感器耗电量
+
+	int getReportingMode() 	//报告模式为输入传感器，
+				//REPORTING_MODE_***常量:
+					REPORTING_MODE_CONTINUOUS
+					REPORTING_MODE_ON_CHANGE
+					REPORTING_MODE_ONE_SHOT
+					REPORTING_MODE_SPECIAL_TRIGGER
+
+	float getResolution() 	//获取在传感器单元中的传感器的分辨率
+
+	String getStringType() 	//该传感器作为字符串的类型。
+
+	int getType() 		//获取该传感器的类型
+
+	String getVendor() 		//获取传感器的供应商
+
+	int getVersion() 		//传感器模块的版本
+
+	boolean isWakeUpSensor() 	//当传感器是唤醒状态返回true
+
+
+SensorEventListener:
+
+    onSensorChanged(SensorEvent) 	//当传感器值发生改变时
+		    SensorEvent:
+		    values	//数组，传感器值，该值根据传感器类型不同返回不同
+		    sensor	//产生事件的传感器
+		    accuracy	//这个事件的准确性
+		    timestamp	//时间发生周期纳秒
+
+    onAccuracyChanged(Sensor, int) 	//当传感器的精度发生变化时,
+
+		用以下四个状态常量之一来代表的:
+		    SENSOR_STATUS_ACCURACY_LOW：   传感器报告低精度值
+		    SENSOR_STATUS_ACCURACY_MEDIUM：传感器报告平均精度值
+		    SENSOR_STATUS_ACCURACY_HIGH：  传感器报告高精度值
+		    SENSOR_STATUS_UNRELIABLE：     传感器报告的精度值不可靠
     
 
+
+
 ---------------------------------------------------------
-最后举个例子：（通过光传感器改变背景颜色）
+最后举个例子：通过光传感器, 改变背景颜色
+---------------------------------------------------------
 
 布局：
 <?xml version="1.0" encoding="utf-8"?>
@@ -188,4 +288,5 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sm.unregisterListener(this);
     }
 }
+
 
