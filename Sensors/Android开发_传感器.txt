@@ -1,0 +1,191 @@
+Android开发_传感器.txt
+
+传感器:
+传感器(Sensor)是一种检测装置，能感受到被测量的信息，并能将感受到的信息，按一定规律变换成为电信号或其他所需形式的信息输出，
+以满足信息的传输、处理、存储、显示、记录和控制等要求。
+
+可以说，传感器是人类五官的延长，又称之为电五官。
+---------------------------------------------------------
+传感器类型:
+
+    Sensor.TYPE_AMBIENT_TEMPERATURE;    //温度传感器（API 14引入Android 4.0）
+    Sensor.TYPE_ACCELEROMETER;          加速度传感器
+    Sensor.TYPE_GRAVITY;重力传感器
+    Sensor.TYPE_LINEAR_ACCELERATION;线性加速度传感器
+    Sensor.TYPE_GYROSCOPE;陀螺仪传感器
+    Sensor.TYPE_ROTATION_VECTOR;设备的方向，表示为三个轴的角度组合（旋转向量）
+    Sensor.TYPE_MAGNETIC_FIELD;磁力传感器
+    Sensor.TYPE_PROXIMITY;近距离传感器
+    Sensor.TYPE_RELATIVE_HUMIDITY;相对湿度传感器（API 14引入 Android 4.0）
+    Sensor.TYPE_LIGHT;环境光传感器
+---------------------------------------------------------
+使用传感器
+
+获取SensorManager管理器
+
+getSystemService(Context.SENSOR_SERVICE)
+
+通过SensorManager获取传感器
+
+注册传感器监听
+
+SensorManager.registerListener(SensorEventListener listener, Sensor sensor, int samplingPeriodUs)
+
+    listener：监听器
+    sensor：传感器
+    samplingPeriodUs：采集周期
+
+移除传感器监听
+
+ SensorManager.unregisterListener() 
+---------------------------------------------------------
+涉及相关类
+SensorManager
+
+    List< Sensor> getSensorList(Sensor.type) 获取传感器（多个）
+
+    Sensor getDefaultSensor(Sensor.type) 获取默认传感器
+
+    boolean cancelTriggerSensor(TriggerEventListener listener, Sensor sensor)取消接收的触发事件为触发传感器。
+
+    boolean flush(SensorEventListener listener)刷新所有传感器的FIFO注册侦听器。
+
+    float getAltitude(float p0, float p)计算海拔米的海平面大气压力和压力。
+
+    void getAngleChange(float[] angleChange, float[] R, float[] prevR)计算两个旋转矩阵之间的角度变化。
+
+    float getInclination(float[] I)计算从我返回getRotationMatrix(float[], float[], float[], float[])倾斜弧度矩阵地磁倾角
+
+    float[] getOrientation(float[] R, float[] values)计算基于旋转矩阵设备的方向。
+
+    void getQuaternionFromVector(float[] Q, float[] rv)辅助功能旋转向量转换为四元数归。给定一个旋转矢量（大概从ROTATION_VECTOR传感器）时，返回一个归四元阵列Q的四元数的形式存储在[W，X，Y，Z]
+
+    boolean getRotationMatrix(float[] R, float[] I, float[] gravity, float[] geomagnetic)可以计算出旋转矩阵
+
+    void getRotationMatrixFromVector(float[] R, float[] rotationVector)辅助函数来旋转矢量转换为旋转矩阵。
+
+    boolean remapCoordinateSystem(float[] inR, int X, int Y, float[] outR)旋转供给旋转矩阵，以便它表示不同的坐标系中。
+
+    boolean requestTriggerSensor(TriggerEventListener listener, Sensor sensor)请接受触发事件的触发传感器。
+---------------------------------------------------------
+Sensor
+    int getFifoMaxEventCount() 获取该传感器能分批处理的事件的最大数量。
+    如果这个值是零，表明批处理模式不支持此传感器。如果其他应用程序登记到成批的传感器，可以进行批处理事件的实际数目可能是较小的，因为硬件FIFO将被部分用于批处理的另一传感器。
+
+    int getFifoReservedEventCount() 保留此传感器中的分批方式的FIFO的事件数。给出了对可批处理事件的最小数量的保证。
+
+    int getMaxDelay() 传感器最大延迟（微秒）
+    此值仅用于连续和按变化的传感器所定义。它是对应于该传感器支持的最低频率两个传感事件之间的延迟。当较低的频率通过registerListener请求（）事件将在该频率产生代替。它可以用于估计当批量FIFO可以充分。旧设备可以将该值设置为零。忽略此值的情况下为负数或零。
+
+    int getMinDelay() 传感器最小延迟（微秒）
+
+    float getMaximumRange() 获取传感器最大值
+
+    String getName() 获取传感器名称
+
+    float getPower() 获取传感器耗电量
+
+    int getReportingMode() 报告模式为输入传感器，REPORTING_MODE_* 常量
+    REPORTING_MODE_CONTINUOUS
+    REPORTING_MODE_ON_CHANGE
+    REPORTING_MODE_ONE_SHOT
+    REPORTING_MODE_SPECIAL_TRIGGER
+
+    float getResolution() 获取在传感器单元中的传感器的分辨率
+
+    String getStringType() 该传感器作为字符串的类型。
+
+    int getType() 获取该传感器的类型
+
+    String getVendor() 获取传感器的供应商
+
+    int getVersion() 传感器模块的版本
+
+    boolean isWakeUpSensor() 当传感器是唤醒状态返回true
+---------------------------------------------------------
+SensorEventListener
+
+    onSensorChanged(SensorEvent) 当传感器值发生改变时
+    SensorEvent
+    values数组，传感器值，该值根据传感器类型不同返回不同
+    sensor产生事件的传感器
+    accuracy这个事件的准确性
+    timestamp时间发生周期纳秒
+    onAccuracyChanged(Sensor,int) 当传感器的精度发生变化时
+    用以下四个状态常量之一来代表的
+    SENSOR_STATUS_ACCURACY_LOW：传感器报告低精度值
+    SENSOR_STATUS_ACCURACY_MEDIUM：传感器报告平均精度值
+    SENSOR_STATUS_ACCURACY_HIGH：传感器报告高精度值
+    SENSOR_STATUS_UNRELIABLE：传感器报告的精度值不可靠
+    
+
+---------------------------------------------------------
+最后举个例子：（通过光传感器改变背景颜色）
+
+布局：
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_bg"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.rair.sensordemo.MainActivity">
+
+</RelativeLayout>
+
+代码：
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
+
+    private SensorManager sm;
+    private String TAG = "Rair";
+    private RelativeLayout mainBg;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        initView();
+    }
+
+    private void initView() {
+        mainBg = (RelativeLayout) findViewById(R.id.main_bg);
+        //1、获取SensorManager
+        sm = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        //2、获取所有的Sensor，也可以获取某类型的所有传感器
+        List<Sensor> sensorList = sm.getSensorList(Sensor.TYPE_ALL);
+        for (Sensor sensor : sensorList) {
+            Log.i(TAG, sensor.getName());
+        }
+        //3、获取默认的光感传感器
+        Sensor defaultSensor = sm.getDefaultSensor(Sensor.TYPE_LIGHT);
+        //4、注册传感器监听器
+        sm.registerListener(this, defaultSensor, SensorManager.SENSOR_DELAY_FASTEST);
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        float value = event.values[0];
+        Log.i(TAG, "light value" + value);
+        if (value >= 255) {
+            value = 255;
+        } else if (value <= 0) {
+            value = 0;
+        }
+        int rgb = Color.rgb((int) value, 110, (int) value);
+        mainBg.setBackgroundColor(rgb);
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        //5、注销传感器监听器
+        sm.unregisterListener(this);
+    }
+}
+
