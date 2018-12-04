@@ -227,41 +227,67 @@ SensorEventListener:
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/main_bg"
+    android:id="@+id/main_activity"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context="com.rair.sensordemo.MainActivity">
+    tools:context="com.shiguanghu.sensordemo.MainActivity">
 
 </RelativeLayout>
+
+
 
 代码：
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
-    private SensorManager sm;
-    private String TAG = "Rair";
-    private RelativeLayout mainBg;
+    private SensorManager mSensorManager;
+    private String TAG = "shiguanghu";
+    private RelativeLayout main_activity;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        initView();
-    }
-
-    private void initView() {
-        mainBg = (RelativeLayout) findViewById(R.id.main_bg);
+        
+	
         //1、获取SensorManager
-        sm = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+	
         //2、获取所有的Sensor，也可以获取某类型的所有传感器
-        List<Sensor> sensorList = sm.getSensorList(Sensor.TYPE_ALL);
+        List<Sensor> sensorList = mSensorManager.getSensorList(Sensor.TYPE_ALL);
         for (Sensor sensor : sensorList) {
             Log.i(TAG, sensor.getName());
+	        
+		/*
+            	on Samsung Galaxy S4:
+
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: K330 Acceleration Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: AK8963C Magnetic field Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: AK8963C Magnetic field Sensor UnCalibrated
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: Orientation Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: K330 Gyroscope Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: K330 UnCalibrated Gyroscope sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: BMP182 Barometer Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: MAX88005 Proximity Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: CM3323 Light Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: SHTC1 relative humidity sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: SHTC1 ambient temperature sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: SAMSUNG Significant Motion Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: SAMSUNG Step Detector Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: SAMSUNG Step Counter Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: Screen Orientation Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: Rotation Vector Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: Gravity Sensor
+                12-04 21:40:33.735 17933-17933/? I/shiguanghu: Linear Acceleration Sensor
+            	*/
         }
-        //3、获取默认的光感传感器
-        Sensor defaultSensor = sm.getDefaultSensor(Sensor.TYPE_LIGHT);
+        
+	//3、获取默认的光感传感器
+        Sensor my_sensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
+	
         //4、注册传感器监听器
-        sm.registerListener(this, defaultSensor, SensorManager.SENSOR_DELAY_FASTEST);
+        mSensorManager.registerListener(this, my_sensor, SensorManager.SENSOR_DELAY_FASTEST);
     }
+
 
     @Override
     public void onSensorChanged(SensorEvent event) {
@@ -273,7 +299,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             value = 0;
         }
         int rgb = Color.rgb((int) value, 110, (int) value);
-        mainBg.setBackgroundColor(rgb);
+        main_activity.setBackgroundColor(rgb);
     }
 
     @Override
@@ -284,8 +310,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     protected void onDestroy() {
         super.onDestroy();
+	
         //5、注销传感器监听器
-        sm.unregisterListener(this);
+        mSensorManager.unregisterListener(this);
     }
 }
 
