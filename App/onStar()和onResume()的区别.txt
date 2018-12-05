@@ -1,0 +1,35 @@
+Activity 生命周期中 onStart() 和 onResume() 的区别
+-----------------------------------------------------------
+
+Activity有四种状态:
+
+Running 状态：  一个新的Activity启动入栈后，它在屏幕最前端，处于栈的最顶端，此时它处于可见并可和用户交互的激活状态。
+
+Paused  状态：  当Activity被另一个透明或者Dialog样式的Activity覆盖时的状态。
+                  此时它依然与窗口管理器保持连接，系统继续维护其内部状态，它仍然可见，但它已经失去了焦点，故不可与用户交互。
+                  
+Stopped 状态：  当Activity不可见时，Activity处于Stopped状态。
+                  当Activity处于此状态时，一定要保存当前数据和当前的UI状态，否则一旦Activity退出或关闭时，当前的数据和UI状态就丢失了。
+                  
+Killed  状态：  Activity被杀掉以后，或者被启动以前，处于Killed状态。
+                  这是Activity已从Activity堆栈中移除，需要重新启动才可以显示和使用。
+
+Activity的4种状态中，
+Running / Paused 状态是可见的；
+Stopped / Killed 状态是不可见的；
+
+ 
+---------------------------------------------------------
+onStart() / onResume()的区别：
+---------------------------------------------------------
+onStart()   是activity界面被显示出来的时候执行的，用户可见，
+            包括有一个activity在它上面，但没有将它完全覆盖，用户可以看到部分activity但不能与它交互；
+            
+onResume()  是当该activity与用户能进行交互时被执行，用户可以获得activity的焦点，能够与用户交互。
+
+-------------------------------
+onStart()  通常就是onStop()，也就是用户按下了home键，activity变为后台后，
+            之后用户再切换回这个activity就会调用onRestart()而后调用onStart()；
+            
+onResume() 是onPause()，通常是当前的acitivty被暂停了，比如被另一个透明或者Dialog样式的Activity覆盖了，之后dialog取消，
+            activity回到可交互状态，调用onResume()；
