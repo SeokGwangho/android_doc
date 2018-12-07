@@ -183,7 +183,7 @@ GpsSvInfo:
 		typedef struct {  
 			size_t 	size; 		/** set to sizeof(GpsSvInfo) */  
 			int     prn;  		/** Pseudo-random number for the SV. 伪随机数。
-			                             看Google的GPS App的话，是用PRN号码来分辨GPS卫星的国家的 */  
+			                  //看Google的GPS App的话，是用PRN号码来分辨GPS卫星的国家的. Prn与NMEA-ID有固定转换关系 */  
 						     
 			float   snr;  		/** Signal to noise ratio. */ 
 			float   elevation;  	/** Elevation of SV in degrees. */ 
