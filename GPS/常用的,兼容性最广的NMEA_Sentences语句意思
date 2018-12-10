@@ -14,6 +14,15 @@ NMEA实际上已成为所有的GPS接收机和最通用的数据输出格式，�
 NMEA-0183协议定义的语句非常多，但是常用的，兼容性最广的NMEA语句只有：
       $GPGGA、$GPGSA、$GPGSV、$GPRMC、$GPVTG、$GPGLL等。
 
+
+GPGGA  Global Positioning System Fix Data（GGA）            全球定位信息
+GPGSA  GPS DOP and Active Satellites（GSA）                 当前卫星信息
+GPGSV  GPS Satellites in View（GSV）                        可见卫星信息
+GPRMC  Recommended Minimum Specific GPS/TRANSIT Data（RMC） 推荐定位信息
+GPVTG  Track Made Good and Ground Speed（VTG）              地面速度信息
+GPGLL  Geographic Position（GLL）                           地理定位信息
+
+
 下面给出 常用NMEA-0183语句的字段定义解释：
 ----------------------------------------------------------
 GPGSA（ 当前卫星信息）
