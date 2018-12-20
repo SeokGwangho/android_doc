@@ -56,4 +56,452 @@ nmea_parser_push()中使用了一个nmeaParserNODE的节点来存储各个senten
      5.释放缓冲区以及链表。
 
  
- 
+--------------------------------------------------------------------------------------------------------------------------
+nmealib代码具体分析：
+--------------------------------------------------------------------------------------------------------------------------
+可以从samples/parse/main.c开始， 以其中的一条GPGGA语句为例。
+
+nmeaINFO 结构汇总的是gps数据信息，里面包括utc时间、定位状态、质量因子、经纬度、速度、方向等信息，
+之所以说是汇总，
+是因为这里是对所有的nmea语句进行解析，然后将相应的数据赋值到该结构中，而不仅仅是其中的一条nmea语句，
+因为一条nmea语句不可能包括所有的gps信息。
+
+nmeaPARSER 是解析nmea所需要的一个结构。
+
+接下来是nmea_zero_INFO（）函数：
+void nmea_zero_INFO(nmeaINFO *info)  
+{  
+    memset(info, 0, sizeof(nmeaINFO));  
+    nmea_time_now(&info->utc);  
+    info->sig = NMEA_SIG_BAD;  
+    info->fix = NMEA_FIX_BAD;  
+}  
+
+这里是对nmeaINFO这个结构中数据进行清零操作，
+使用nmea_time_now函数对其中utc时间赋一个初值，初值就是当前的系统时间，
+如果没有从nmea中解析出时间信息，那么最后的结果就是你当前的系统时间。
+
+而nmeaINFO中的sig、fix分别是定位状态和定位类型。
+
+接着是nmea_parser_init（）函数：
+int nmea_parser_init(nmeaPARSER *parser)  
+{  
+    int resv = 0;  
+    int buff_size = nmea_property()->parse_buff_size;  
+
+    NMEA_ASSERT(parser);  
+
+    if(buff_size < NMEA_MIN_PARSEBUFF)  
+        buff_size = NMEA_MIN_PARSEBUFF;  
+
+    memset(parser, 0, sizeof(nmeaPARSER));  
+
+    if(0 == (parser->buffer = malloc(buff_size)))  
+        nmea_error("Insufficient memory!");  
+    else  
+    {  
+        parser->buff_size = buff_size;  
+        resv = 1;  
+    }      
+
+    return resv;  
+}  
+这个函数是对nmeaPARSER结构做初始化，
+首先是buff_size， 这里值为NMEA_DEF_PARSEBUFF， 即1024。
+然后为buffer分配内存，这里自然是分配的1024字节大小。
+
+
+
+最后， 调用nmea_parse（）函数， 对nmea语句进行解析， 
+有4个参数，分别是：
+     nmeaPARSER指针， buff是需要解析的nmea语句， buff_sz为nmea语句的长度， nmeaINFO指针。
+
+int nmea_parse(nmeaPARSER *parser, const char *buff, int buff_sz,nmeaINFO *info)  
+{  
+    int ptype, nread = 0;  
+    void *pack = 0;  
+
+    NMEA_ASSERT(parser && parser->buffer);  
+
+    nmea_parser_push(parser, buff, buff_sz);  
+
+    while(GPNON != (ptype = nmea_parser_pop(parser, &pack)))  
+    {  
+        nread++;  
+
+        switch(ptype)  
+        {  
+        case GPGGA:  
+            nmea_GPGGA2info((nmeaGPGGA *)pack, info);  
+            break;  
+        case GPGSA:  
+            nmea_GPGSA2info((nmeaGPGSA *)pack, info);  
+            break;  
+        case GPGSV:  
+            nmea_GPGSV2info((nmeaGPGSV *)pack, info);  
+            break;  
+        case GPRMC:  
+            nmea_GPRMC2info((nmeaGPRMC *)pack, info);  
+            break;  
+        case GPVTG:  
+            nmea_GPVTG2info((nmeaGPVTG *)pack, info);  
+            break;  
+        };  
+
+        free(pack);  
+    }  
+
+    return nread;  
+}
+
+接下来，调用nmea_parser_push（）函数。
+int nmea_parser_push(nmeaPARSER *parser, const char *buff, int buff_sz)  
+{  
+    int nparse, nparsed = 0;  
+    do  
+    {  
+        if(buff_sz > parser->buff_size)  
+            nparse = parser->buff_size;  
+        else  
+            nparse = buff_sz;  
+        nparsed += nmea_parser_real_push(parser, buff, nparse); //这里nparse还是等于buff_sz大小（nmea语句的长度）  
+        buff_sz -= nparse;  
+    } while(buff_sz);  
+    return nparsed;  
+}
+
+在do--while里又调用了nmea_parser_real_push()函数，这里nparse还是等于buff_sz大小（nmea语句的长度）。
+
+int nmea_parser_real_push(nmeaPARSER *parser, const char *buff, int buff_sz)  
+{  
+    int nparsed = 0, crc, sen_sz, ptype;  
+    nmeaParserNODE *node = 0;  
+
+    NMEA_ASSERT(parser && parser->buffer);  
+
+    /* clear unuse buffer (for debug) */  
+    /* 
+    memset( 
+        parser->buffer + parser->buff_use, 0, 
+        parser->buff_size - parser->buff_use 
+        ); 
+        */  
+
+    /* add */  
+    if(parser->buff_use + buff_sz >= parser->buff_size)  
+        nmea_parser_buff_clear(parser);  
+
+    memcpy(parser->buffer + parser->buff_use, buff, buff_sz);  
+    parser->buff_use += buff_sz;  
+
+    /* parse */  
+    for(;;node = 0)  
+    {  
+        sen_sz = nmea_find_tail(  
+            (const char *)parser->buffer + nparsed,  
+            (int)parser->buff_use - nparsed, &crc);  
+
+        if(!sen_sz)  
+        {  
+            if(nparsed)  
+                memcpy(  
+                parser->buffer,  
+                parser->buffer + nparsed,  
+                parser->buff_use -= nparsed);  
+            break;  
+        }  
+        else if(crc >= 0)  
+        {  
+            ptype = nmea_pack_type(  
+                (const char *)parser->buffer + nparsed + 1,  
+                parser->buff_use - nparsed - 1);  
+
+            if(0 == (node = malloc(sizeof(nmeaParserNODE))))  
+                goto mem_fail;  
+
+            node->pack = 0;  
+
+            switch(ptype)  
+            {  
+            case GPGGA:  
+                if(0 == (node->pack = malloc(sizeof(nmeaGPGGA))))  
+                    goto mem_fail;  
+                node->packType = GPGGA;  
+                if(!nmea_parse_GPGGA(  
+                    (const char *)parser->buffer + nparsed,  
+                    sen_sz, (nmeaGPGGA *)node->pack))  
+                {  
+                    free(node);  
+                    node = 0;  
+                }  
+                break;  
+            case GPGSA:  
+                if(0 == (node->pack = malloc(sizeof(nmeaGPGSA))))  
+                    goto mem_fail;  
+                node->packType = GPGSA;  
+                if(!nmea_parse_GPGSA(  
+                    (const char *)parser->buffer + nparsed,  
+                    sen_sz, (nmeaGPGSA *)node->pack))  
+                {  
+                    free(node);  
+                    node = 0;  
+                }  
+                break;  
+            case GPGSV:  
+                if(0 == (node->pack = malloc(sizeof(nmeaGPGSV))))  
+                    goto mem_fail;  
+                node->packType = GPGSV;  
+                if(!nmea_parse_GPGSV(  
+                    (const char *)parser->buffer + nparsed,  
+                    sen_sz, (nmeaGPGSV *)node->pack))  
+                {  
+                    free(node);  
+                    node = 0;  
+                }  
+                break;  
+            case GPRMC:  
+                if(0 == (node->pack = malloc(sizeof(nmeaGPRMC))))  
+                    goto mem_fail;  
+                node->packType = GPRMC;  
+                if(!nmea_parse_GPRMC(  
+                    (const char *)parser->buffer + nparsed,  
+                    sen_sz, (nmeaGPRMC *)node->pack))  
+                {  
+                    free(node);  
+                    node = 0;  
+                }  
+                break;  
+            case GPVTG:  
+                if(0 == (node->pack = malloc(sizeof(nmeaGPVTG))))  
+                    goto mem_fail;  
+                node->packType = GPVTG;  
+                if(!nmea_parse_GPVTG(  
+                    (const char *)parser->buffer + nparsed,  
+                    sen_sz, (nmeaGPVTG *)node->pack))  
+                {  
+                    free(node);  
+                    node = 0;  
+                }  
+                break;  
+            default:  
+                free(node);  
+                node = 0;  
+                break;  
+            };  
+
+            if(node)  
+            {  
+                if(parser->end_node)  
+                    ((nmeaParserNODE *)parser->end_node)->next_node = node;  
+                parser->end_node = node;  
+                if(!parser->top_node)  
+                    parser->top_node = node;  
+                node->next_node = 0;  
+            }  
+        }  
+
+        nparsed += sen_sz;  
+    }  
+
+    return nparsed;  
+
+mem_fail:  
+    if(node)  
+        free(node);  
+
+    nmea_error("Insufficient memory!");  
+
+    return -1;  
+} 
+
+首先将要解析的nmea字符串拷贝到nmeaPARSER的buffer指针处，
+注意,这里最开始就分配好了1024字节大小的内存空间，然后对nmeaPARSER的buff_use做一个赋值操作，这里赋值为nmea语句的长度值。
+
+
+到了for循环中，首先调用的是nmea_find_tail()函数：
+这个函数主要干什么的？
+
+主要是找到nmea语句的结束符”\r\n”，并判断其crc值是否正确，
+如果你私自改了nmea语句中的某个值，而又没有修改crc值，那么这里解析是不会成功的。
+如果在其他地方发现了nmea语句的起始符”$”，那么证明这条nmea语句是有问题的，直接退出。
+
+那么边计算crc值， 边找nmea语句的结束符，如果找到了一个符号”*”， 那么结束符，就在后面的第3、第4个位置处。
+这里一并将nmea语句中的crc值取出来，并和前面计算的crc值做一个比较，如果不相等，说明这条nmea语句有问题，直接丢弃。
+
+最后返回的nread， 还是nmea语句的长度值。
+
+int nmea_find_tail(const char *buff, int buff_sz, int *res_crc)  
+{  
+    static const int tail_sz = 3 /* *[CRC] */ + 2 /* \r\n */;  
+
+    const char *end_buff = buff + buff_sz;  
+    int nread = 0;  
+    int crc = 0;  
+
+    NMEA_ASSERT(buff && res_crc);  
+
+    *res_crc = -1;  
+
+    for(;buff < end_buff; ++buff, ++nread)  
+    {  
+        if(('$' == *buff) && nread)  
+        {  
+            buff = 0;  
+            break;  
+        }  
+        else if('*' == *buff)  
+        {  
+            if(buff + tail_sz <= end_buff && '\r' == buff[3] && '\n' == buff[4])  
+            {  
+                *res_crc = nmea_atoi(buff + 1, 2, 16);  
+                nread = buff_sz - (int)(end_buff - (buff + tail_sz));  
+                if(*res_crc != crc)  
+                {  
+                    *res_crc = -1;  
+                    buff = 0;  
+                }  
+            }  
+
+            break;  
+        }  
+        else if(nread)  
+            crc ^= (int)*buff;  
+    }  
+
+    if(*res_crc < 0 && buff)  
+        nread = 0;  
+
+    return nread;  //最后返回的nread， 还是nmea语句的长度值。
+}  
+
+
+返回到nmea_parser_real_push（）函数中，
+sen_sz不为0，那么自然走下面的else if流程， 然后调用nmea_pack_type（）函数， 判断nmea语句的包类型：
+int nmea_pack_type(const char *buff, int buff_sz)  
+{  
+    static const char *pheads[] = {  
+        "GPGGA",  
+        "GPGSA",  
+        "GPGSV",  
+        "GPRMC",  
+        "GPVTG",  
+    };  
+
+    NMEA_ASSERT(buff);  
+
+    if(buff_sz < 5)  
+        return GPNON;  
+    else if(0 == memcmp(buff, pheads[0], 5))  
+        return GPGGA;  
+    else if(0 == memcmp(buff, pheads[1], 5))  
+        return GPGSA;  
+    else if(0 == memcmp(buff, pheads[2], 5))  
+        return GPGSV;  
+    else if(0 == memcmp(buff, pheads[3], 5))  
+        return GPRMC;  
+    else if(0 == memcmp(buff, pheads[4], 5))  
+        return GPVTG;  
+
+    return GPNON;  
+} 
+
+这里只支持5种类型的nmea语句， 有 GPGGA、 GPGSA、 GPGSV、 GPRMC、 GPVTG， 这里只需要判断前5个字符就可以了，返回这个类型值。
+    没有GLGSV， QZGSV之类的俄罗斯，日本等国的卫星。
+如果是GPGGA类型的nmea语句，那自然是调nmea_parse_GPGGA（）这个函数对其进行解析了。
+
+
+在这之前， 首先为 nmeaParserNODE(node) 和 其中的pack申请了内存空间， 那么自然的这里的解析结果， 肯定是存储在pack（node->pack）里了。
+
+int nmea_parse_GPGGA(const char *buff, int buff_sz, nmeaGPGGA *pack)  
+{  
+    char time_buff[NMEA_TIMEPARSE_BUF];  
+
+    NMEA_ASSERT(buff && pack);  
+
+    memset(pack, 0, sizeof(nmeaGPGGA));  
+
+    nmea_trace_buff(buff, buff_sz);  
+
+    if(14 != nmea_scanf(buff, buff_sz,  
+        "$GPGGA,%s,%f,%C,%f,%C,%d,%d,%f,%f,%C,%f,%C,%f,%d*",  
+        &(time_buff[0]),  
+        &(pack->lat), &(pack->ns), &(pack->lon), &(pack->ew),  
+        &(pack->sig), &(pack->satinuse), &(pack->HDOP), &(pack->elv), &(pack->elv_units),  
+        &(pack->diff), &(pack->diff_units), &(pack->dgps_age), &(pack->dgps_sid)))  
+    {  
+        nmea_error("GPGGA parse error!");  
+        return 0;  
+    }  
+
+    if(0 != _nmea_parse_time(&time_buff[0], (int)strlen(&time_buff[0]), &(pack->utc)))  
+    {  
+        nmea_error("GPGGA time parse error!");  
+        return 0;  
+    }  
+
+    return 1;  
+}  
+
+这里最重要的就是nmea_scanf()函数了，这里才是真正的解析nmea语句的函数， 这个函数的名字也特别，带了个scanf。跟C的scanf一样，
+
+这里的nmea_scanf()也是类似的，只是这里的数据源是在参数一buff里， 数据还是没有变化，还是那一条nmea语句。
+
+nmea_scanf（）这个函数大家也可以去细看一下， 最后的解析结果,存储在(node->)pack。
+
+
+
+回到nmea_parser_real_push（）函数这里， 最后到了这里：
+if(node) {
+    if(parser->end_node)  
+        ((nmeaParserNODE *)parser->end_node)->next_node = node;  
+    parser->end_node = node;  
+    if(!parser->top_node)  
+        parser->top_node = node;  
+    node->next_node = 0;  
+}  
+node是找到了，初始时end_node、top_node都是都是为空的，那么都指向这里的node。
+
+
+回到nmea_parse（）函数这里。
+nmea_parser_push（）函数执行完了，然后是调用nmea_parser_pop（）函数：
+int nmea_parser_pop(nmeaPARSER *parser, void **pack_ptr)  
+{  
+    int retval = GPNON;  
+    nmeaParserNODE *node = (nmeaParserNODE *)parser->top_node;  
+
+    NMEA_ASSERT(parser && parser->buffer);  
+
+    if(node)  
+    {  
+        *pack_ptr = node->pack;  
+        retval = node->packType;  
+        parser->top_node = node->next_node;  
+        if(!parser->top_node)  
+            parser->end_node = 0;  
+        free(node);  
+    }  
+
+    return retval;  
+}  
+首先找到之前的pack， 获取他的packType并返回。
+如果packType是GPGGA，那么调用nmea_GPGGA2info， 而这里的pack也强制转换为了nmeaGPGGA指针。
+
+void nmea_GPGGA2info(nmeaGPGGA *pack, nmeaINFO *info)  
+{  
+    NMEA_ASSERT(pack && info);  
+
+    info->utc.hour = pack->utc.hour;  
+    info->utc.min = pack->utc.min;  
+    info->utc.sec = pack->utc.sec;  
+    info->utc.hsec = pack->utc.hsec;  
+    info->sig = pack->sig;  
+    info->HDOP = pack->HDOP;  
+    info->elv = pack->elv;  
+    info->lat = ((pack->ns == 'N')?pack->lat:-(pack->lat));  
+    info->lon = ((pack->ew == 'E')?pack->lon:-(pack->lon));  
+    info->smask |= GPGGA;  
+}
+
+而这个函数， 自然是对info中的数据做了一些赋值操作，包括经纬度、utc时间等。
+把info打印出来看就可以了，解析完毕。
+
