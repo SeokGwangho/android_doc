@@ -1,0 +1,38 @@
+启动和关闭.rc文件中定义的服务
+
+
+以Console服务为例：
+
+service console /system/bin/sh
+    class core
+    console
+    disabled
+    user shell
+    group log
+
+//如停止的时候：
+setprop ctl.stop console
+getprop看的话，由[running] 会变成 [stopped]
+
+-------------------------------------------------------------
+详解：
+-------------------------------------------------------------
+shell上敲命令的方式：
+        setprop ctl.start service_name
+        setprop ctl.stop service_name
+
+JNI层上写C代码的方式:
+        #include "cutils/properties.h"
+
+        property_set("ctl.start", service_name);
+        property_set("ctl.stop", service_name);
+
+
+在java应用里的方式：
+import android.os.SystemProperties;
+设置属性：
+SystemProperties.set("persist.sys.country",”china”);
+
+取得属性：
+String vmHeapSize =SystemProperties.get("dalvik.vm.heapgrowthlimit", "24m");
+也可以用SystemProperties.getBoolean，getInt等。
