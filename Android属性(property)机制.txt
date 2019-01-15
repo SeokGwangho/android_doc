@@ -1,0 +1,164 @@
+Android属性(property)机制
+
+Android系统（本文以Android 4.4为准）的属性（Property）机制
+有点类似Windows系统的注册表，其中的每个属性被组织成简单的键值对（key/value）供外界使用。
+
+我们可以通过在adb shell里敲入getprop命令来获取当前系统的所有属性内容，而且还可以敲入类似“getprop 属性名”的命令来获取特定属性的值。
+设置属性值的方法也很简单，只需敲入“setprop 属性名 新值”命令即可。
+
+ 
+Property机制的运作机理可以汇总成以下几句话：
+1）  系统一启动就会从若干属性脚本文件中加载属性内容；
+2）  系统中的所有属性（key/value）会存入同一块共享内存中；
+3）  系统中的各个进程会将这块共享内存映射到自己的内存空间，这样就可以直接读取属性内容了；
+4）  系统中只有一个实体可以设置、修改属性值，它就是属性服务（Property Service）；
+5）  不同进程只可以通过socket方式，向属性服务发出修改属性值的请求，而不能直接修改属性值；
+6）  共享内存中的键值内容会以一种字典树的形式进行组织。
+
+--------------------------------------------------------------------------
+Android属性(property)机制
+--------------------------------------------------------------------------
+1. 属性简介
+
+Android里有很多属性（property），每个属性都有一个名称和值，他们都是字符串格式。这些属性定义了Android系统的一些公共系统属性。比如：
+
+[dalvik.vm.dexopt-flags]: [m=y]
+
+[dalvik.vm.heapgrowthlimit]: [48m]
+
+[gsm.operator.iso-country]: []
+
+[gsm.operator.isroaming]: [false]
+
+[gsm.operator.numeric]: []
+
+[gsm.sim.operator.alpha]: []
+
+[gsm.sim.operator.iso-country]: []
+
+[gsm.sim.operator.numeric]: []
+
+这些属性多数是开机启动时预先设定的，也有一些是动态加载的。
+
+系统启动时以下面的次序加载预先设定属性：
+
+/default.prop
+
+/system/build.prop
+
+/system/default.prop
+
+/data/local.prop
+
+/data/property/*
+
+后加载的如果有重名的则覆盖前面的。
+
+有两种属性值得一提：
+
+persist.* : 以persist开始的属性会在/data/property存一个副本。也就是说，如果程序调property_set设了一个以persist为前缀的属性，系统会在/data/property/*里加一个文件记录这个属性，重启以后这个属性还有。如果property_set其它属性，因为属性是在内存里存，所以重启后这个属性就没有了。
+
+ro.* :以ro为前缀的属性不能修改。
+
+ 
+
+2. 应用程序属性使用方法
+
+在java应用里设置属性：
+
+import android.os.SystemProperties;
+
+SystemProperties.set("persist.sys.country",”china”);
+
+在java里取得属性：
+
+String vmHeapSize =SystemProperties.get("dalvik.vm.heapgrowthlimit", "24m");
+
+也可以用SystemProperties.getBoolean，getInt等。
+
+ 
+
+在native C中设置属性：
+
+#include "cutils/properties.h"
+
+property_set("vold.decrypt","trigger_load_persist_props");
+
+在C中取得属性：
+
+  charencrypted_state[32];
+
+ property_get("ro.crypto.state", encrypted_state, "");
+
+最后一个参数是默认值。
+
+ 
+
+3. 启动脚本中属性使用方法
+
+一般property启动应该加在init.<yourhardware>.rc而不是直接init.rc里。下面是一个init.rc里的例子：
+
+# adbd on at boot in emulator
+
+on property:ro.kernel.qemu=1
+
+start adbd
+
+意思是如果ro.kernel.qemu=1，也就是当前是模拟器的话，则启动adb服务。
+
+ 
+
+4. property权限
+
+只有有权限的进程才能修改属性，要不随便写一个就改系统属性那当黑客也太容易了。
+
+权限在system/core/init/property_service.c里定义：
+
+property_perms[] ={
+
+    {"net.rmnet0.",     AID_RADIO,    0},
+
+    {"net.gprs.",       AID_RADIO,    0},
+
+    {"net.ppp",         AID_RADIO,    0},
+
+    {"net.qmi",         AID_RADIO,    0},
+
+    {"ril.",            AID_RADIO,    0},
+
+    {"gsm.",            AID_RADIO,    0},
+
+    {"persist.radio",   AID_RADIO,    0},
+
+    {"net.dns",         AID_RADIO,    0},
+
+    {"net.",            AID_SYSTEM,   0 },
+
+    {"dev.",            AID_SYSTEM,   0 },
+
+    {"runtime.",        AID_SYSTEM,   0 },
+
+    {"hw.",             AID_SYSTEM,   0 },
+
+    {"sys.",            AID_SYSTEM,   0 },
+
+    ...
+
+其实一般应用程序都不会去修改系统属性，所以也不用太在意。
+
+
+
+5. 属性实现原理
+
+属性初始化的入口点是property_init ，在system/core/init/property_service.c中定义。它的主要工作是申请32k共享内存，其中前1k是属性区的头，后面31k可以存247个属性（受前1k头的限制）。property_init初始化完property以后，加载/default.prop的属性定义。
+
+其它的系统属性（build.prop,local.prop,…）在start_property_service中加载。加载完属性服务创建一个socket和其他进程通信（设置或读取属性）。
+
+Init进程poll属性的socket，等待和处理属性请求。如果有请求到来，则调用handle_property_set_fd来处理这个请求。在这个函数里，首先检查请求者的uid/gid看看是否有权限，如果有权限则调property_service.c中的property_set函数。
+
+在property_set函数中，它先查找就没有这个属性，如果找到，更改属性。如果找不到，则添加新属性。更改时还会判断是不是“ro”属性，如果是，则不能更改。如果是persist的话还会写到/data/property/<name>中。
+
+最后它会调property_changed，把事件挂到队列里，如果有人注册这个属性的话（比如init.rc中onproperty:ro.kernel.qemu=1），最终会调它的会调函数。
+
+property名字长度限制是32字节，值的限制是92字节。不知道是google怎么想的 — 一般都是名字比值长得多！比如[dalvik.vm.heapgrowthlimit]:[48m]
+
