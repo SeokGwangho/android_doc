@@ -1,0 +1,1174 @@
+Android_O_开关机动画流程解析_动画_铃声定制.txt
+
+--------------------------------------------------
+1.Android_O_开/关机动画流程解析
+2.动画以及铃声定制
+--------------------------------------------------
+
+
+开机动画 bootanim 的启动:
+
+开机动画是在(服务)进程bootanim里完成的, 先看一下bootanim.rc文件：
+
+ANDROID_O/frameworks/base/cmds/bootanimation/bootanim.rc
+
+service bootanim /system/bin/bootanimation
+     class core animation
+     user graphics
+     group graphics audio
+     disabled		//说明此服务是不会自动运行的, 必须显式地通过服务器来启动!
+     oneshot			//当此服务退出时，不会自动再重启
+     writepid /dev/stune/top-app/tasks
+
+
+说明： 
+1. 应用程序bootanimation的用户和用户组, 名称分别被设置为graphics。
+
+2. 用来启动应用程序bootanimation的服务bootanim是disabled的,
+   因此init进程在启动的时候，不会主动将应用程序bootanimation启动起来。
+
+3. SurfaceFlinger服务启动时，
+	它会通过修改系统属性ctl.start的值来通知init进程启动应用程序bootanimation。
+   	
+	而当System进程将系统中的关键服务都启动起来之后，
+	
+	ActivityManagerService服务就会通知SurfaceFlinger服务boot Finished，接着修改系统属性ctl.stop的值，
+	
+	以便可以通知init进程停止执行应用程序bootanimation。 
+
+--------------------------------------------------------------------------
+关于SurfaceFlinger服务:
+	SurfaceFlinger服务负责管理系统的帧缓冲区设备，并且负责渲染系统的UI，即各个应用程序的UI。
+	
+
+	SurfaceFlinger服务运行在System进程中，用来统一管理系统的帧缓冲区设备。
+	
+	由于SurfaceFlinger服务运行在System进程中，因此，Android应用程序就需要通过Binder进程间通信机制来请求它来渲染自己的UI。
+
+	Android APP请求SurfaceFlinger服务渲染自己的UI可以分为三步曲：
+
+		step1: 首先是创建一个到SurfaceFlinger服务的连接，
+		step2: 接着再通过这个连接来创建一个Surface，
+		step3: 最后请求SurfaceFlinger服务渲染该Surface。
+
+
+       由于SurfaceFlinger服务需要与Android APP执行Binder进程间通信，因此，它本身就是一个Binder本地对象。
+
+
+	SurfaceFlinger服务虽然是在System进程中启动的，但是它在启动的时候创建一个线程, 来专门负责渲染UI。
+	
+	为了方便描述，我们将这个线程称为UI渲染线程。
+	UI渲染线程的执行函数就为SurfaceFlinger类的成员函数threadLoop，同时它有一个消息队列。
+
+	当UI渲染线程不需要渲染UI时: 
+		它就会在SurfaceFlinger类的成员函数waitForEvent中睡眠等待，直到SurfaceFlinger服务需要执行新的UI渲染操作为止。
+	
+
+
+问：SurfaceFlinger服务，什么时候会执行新的UI渲染操作？
+	
+答：当系统显示屏属性发生变化，或者应用程序窗口发生变化时，它就需要重新渲染系统的UI。
+	    
+	    应用程序是运行在与SurfaceFlinger服务不同的进程中的。
+	    每当应用程序需要更新自己的UI时，它们就会通过Binder进程间通信机制来通知SurfaceFlinger服务。
+	    
+	    这时候SurfaceFlinger服务就会从SurfaceFlinger类的成员函数waitEvent中唤醒，
+	    并且依次执行SurfaceFlinger类的成员函数
+			handleConsoleEvents()、
+			handleTransaction()、
+			handlePageFlip()、
+			handleRepaint()、
+			postFramebuffer()来具体执行渲染UI的操作。
+	    其中，
+		成员函数handleConsoleEvents():  用来处理控制台事件；
+		成员函数handleTransaction():	用来处理系统显示屏属性变化以及应用程序窗口属性变化；
+		成员函数handlePageFlip():	用来获得应用程序窗口下一次要渲染的图形缓冲区，即设置应用程序窗口的活动图形缓冲区；
+		成员函数handleRepaint():	用来重绘应用程序窗口；
+		成员函数postFramebuffer():	用来将系统UI渲染到硬件帧缓冲区中去。
+
+
+	SurfaceFlinger服务从APP接到这个通知之后，就会调用SurfaceFlinger类的成员函数signalEvent()来唤醒UI渲染线程，以便它可以执行渲染UI的操作。
+	
+注:
+	SurfaceFlinger服务是通过Binder线程来获得应用程序的请求的，因此，这时候SurfaceFlinger服务的UI渲染线程实际上是被Binder线程唤醒的。
+	SurfaceFlinger类的成员函数signalEvent()实际上是通过向UI渲染线程的消息队列发送一个类型为INVALIDATE的消息来唤醒UI渲染线程的。
+--------------------------------------------------------------------------
+
+续：
+ANDROID_O/frameworks/native/services/surfaceflinger/surfaceflinger.rc
+
+service surfaceflinger /system/bin/surfaceflinger
+     class core animation
+     user system
+     group graphics drmrpc readproc
+     onrestart restart zygote
+     writepid /dev/stune/foreground/tasks
+     ...
+
+
+服务的入口在 main_surfaceflinger.cpp 文件：
+
+主要工作：新建一个SurfaceFlinger对象，然后调用其中的init()方法，最后调用其中的run()方法。
+
+:int main(int, char**) {
+	startHidlServices();
+
+	signal(SIGPIPE, SIG_IGN);
+	// When SF is launched in its own process, limit the number of
+	// binder threads to 4.
+	ProcessState::self()->setThreadPoolMaxThreadCount(4);
+
+	// start the thread pool
+	sp<ProcessState> ps(ProcessState::self());
+	ps->startThreadPool();
+
+	// instantiate surfaceflinger
+	sp<SurfaceFlinger> flinger = new SurfaceFlinger();	//新建了一个SurfaceFlinger对象
+
+	setpriority(PRIO_PROCESS, 0, PRIORITY_URGENT_DISPLAY);
+
+	set_sched_policy(0, SP_FOREGROUND);
+
+	// Put most SurfaceFlinger threads in the system-background cpuset
+	// Keeps us from unnecessarily using big cores
+	// Do this after the binder thread pool init
+	if (cpusets_enabled()) set_cpuset_policy(0, SP_SYSTEM);
+
+	// initialize before clients can connect
+	flinger->init();					//然后调用了对象的init()方法
+
+	// publish surface flinger
+	sp<IServiceManager> sm(defaultServiceManager());
+	sm->addService(String16(SurfaceFlinger::getServiceName()), flinger, false);
+
+	// publish GpuService
+	sp<GpuService> gpuservice = new GpuService();
+	sm->addService(String16(GpuService::SERVICE_NAME), gpuservice, false);
+
+	struct sched_param param = {0};
+	param.sched_priority = 2;
+	if (sched_setscheduler(0, SCHED_FIFO, &param) != 0) {
+	    ALOGE("Couldn't set SCHED_FIFO");
+	}
+
+	// run surface flinger in this thread
+	flinger->run();
+
+	return 0;
+}
+
+
+ANDROID_O/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp 
+
+SurfaceFlinger在init()函数的最后，会创建一个StartBootAnimThread，
+	在这个线程中, 设置两个属性值：service.bootanim.exit 和 ctl.start。
+
+void SurfaceFlinger::init() {
+     ...
+     mStartBootAnimThread = new StartBootAnimThread();
+     if (mStartBootAnimThread->Start() != NO_ERROR) {
+          ALOGE("Run StartBootAnimThread failed!");
+     }
+ 
+     ALOGV("Done initializing");
+}
+
+bool StartBootAnimThread::threadLoop() {
+      property_set("service.bootanim.exit", "0");	//设置属性
+      property_set("ctl.start", "bootanim");		//设置属性
+      // Exit immediately
+      return false;
+}
+这样bootanim进程就会启动. 
+
+再看init进程的init.cpp的main函数中：
+int main(int argc, char** argv) {
+    ...
+    // At this point we're in the second stage of init.
+    InitKernelLogging(argv);
+    LOG(INFO) << "init second stage started!";
+ 
+    // Set up a session keyring that all processes will have access to. It
+    // will hold things like FBE encryption keys. No process should override
+    // its session keyring.
+    keyctl(KEYCTL_GET_KEYRING_ID, KEY_SPEC_SESSION_KEYRING, 1);
+ 
+    // Indicate that booting is in progress to background fw loaders, etc.
+    close(open("/dev/.booting", O_WRONLY | O_CREAT | O_CLOEXEC, 0000));
+ 
+    property_init();
+ 
+    // If arguments are passed both on the command line and in DT,
+    // properties set in DT always have priority over the command-line ones.
+    process_kernel_dt();
+    process_kernel_cmdline();
+ 
+    // Propagate the kernel variables to internal variables
+    // used by init as well as the current required properties.
+    export_kernel_boot_props();
+ 
+    // Make the time that init started available for bootstat to log.
+    property_set("ro.boottime.init", getenv("INIT_STARTED_AT"));
+    property_set("ro.boottime.init.selinux", getenv("INIT_SELINUX_TOOK"));
+ 
+    // Set libavb version for Framework-only OTA match in Treble build.
+    const char* avb_version = getenv("INIT_AVB_VERSION");
+    if (avb_version) property_set("ro.boot.avb_version", avb_version);
+ 
+    // Clean up our environment.
+    unsetenv("INIT_SECOND_STAGE");
+    unsetenv("INIT_STARTED_AT");
+    unsetenv("INIT_SELINUX_TOOK");
+    unsetenv("INIT_AVB_VERSION");
+ 
+    // Now set up SELinux for second stage.
+    selinux_initialize(false);
+    selinux_restore_context();
+ 
+    epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+    if (epoll_fd == -1) {
+        PLOG(ERROR) << "epoll_create1 failed";
+        exit(1);
+    }
+ 
+    signal_handler_init();
+ 
+    property_load_boot_defaults();
+    export_oem_lock_status();
+
+    start_property_service(); 		//init进程的main函数中调用了start_property_service()，在这个函数中注册了一个epoll handle
+					//init进程会使用epoll机制来轮询事件，其中一个事件就是系统属性值被修改。
+    set_usb_controller();
+    ...
+}
+
+
+init进程的main函数中调用了start_property_service()，在这个函数中注册了一个epoll handle: register_epoll_handler()
+
+void start_property_service() {
+    property_set("ro.property_service.version", "2");
+
+    property_set_fd = create_socket(PROP_SERVICE_NAME, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK,
+                                    0666, 0, 0, NULL);
+    if (property_set_fd == -1) {
+        PLOG(ERROR) << "start_property_service socket creation failed";
+        exit(1);
+    }
+
+    listen(property_set_fd, 8);
+
+    register_epoll_handler(property_set_fd, handle_property_set_fd);
+}
+
+
+init进程会使用epoll机制来轮询事件，其中一个事件就是系统属性值被修改。
+
+得到该事件后，会执行handle_property_set_fd():
+
+static void handle_property_set_fd() {
+     ...
+     switch (cmd) {
+      case PROP_MSG_SETPROP: {
+          char prop_name[PROP_NAME_MAX];
+          char prop_value[PROP_VALUE_MAX];
+  
+          if (!socket.RecvChars(prop_name, PROP_NAME_MAX, &timeout_ms) ||
+              !socket.RecvChars(prop_value, PROP_VALUE_MAX, &timeout_ms)) {
+            PLOG(ERROR) << "sys_prop(PROP_MSG_SETPROP): error while reading name/value from the socket";
+            return;
+          }
+  
+          prop_name[PROP_NAME_MAX-1] = 0;
+          prop_value[PROP_VALUE_MAX-1] = 0;
+  
+          handle_property_set(socket, prop_value, prop_value, true);
+          break;
+        }
+
+该函数会进一步执行handle_control_message()，传入的参数msg.name=ctl.start，msg.value=bootanim
+  void handle_control_message(const std::string& msg, const std::string& name) {
+      Service* svc = ServiceManager::GetInstance().FindServiceByName(name);
+      if (svc == nullptr) {
+          LOG(ERROR) << "no such service '" << name << "'";
+          return;
+      }
+  
+      if (msg == "start") {
+          svc->Start();
+      } else if (msg == "stop") {
+          svc->Stop();
+      } else if (msg == "restart") {
+          svc->Restart();
+      } else {
+          LOG(ERROR) << "unknown control msg '" << msg << "'";
+      }
+  }
+
+由于msg == “start”，handle_control_message进一步执行msg_start（），且传入的arg参数等于bootanim。msg_start代码如下:
+static void msg_start(const char *name)  
+{  
+    struct service *svc = NULL;  
+    char *tmp = NULL;  
+    char *args = NULL;  
+ 
+    if (!strchr(name, ':'))  
+        svc = service_find_by_name(name);  
+    else {  
+        tmp = strdup(name);  
+        if (tmp) {  
+            args = strchr(tmp, ':');  
+            *args = '\0';  
+            args++;  
+ 
+            svc = service_find_by_name(tmp);  
+        }  
+    }  
+ 
+    if (svc) {  
+        service_start(svc, args);  
+    } else {  
+        ERROR("no such service '%s'\n", name);  
+    }  
+    if (tmp)  
+        free(tmp);  
+}
+
+该函数首先调用service_find_by_name():
+	从service_list中查询要启动的服务是否有存在，若存在，返回服务的相关信息。
+
+	因为init.rc中有bootanimation的定义，因此在init进程执行parse_config()时，会将该服务添加到service_list中，所以bootanimation应用是存在的。
+
+然后，如果找到了该服务，就调用service_start启动服务。:w
+----------------------------------------------------------------------------------------------
+到此，bootanimation应用就启动了。
+----------------------------------------------------------------------------------------------
+
+
+
+
+在SurfaceFlinger bootFinshed后, 重设 service.bootanim.exit 的值，退出bootanim服务:
+
+void SurfaceFlinger::bootFinished(){
+   ...
+   // stop boot animation
+   // formerly we would just kill the process, but we now ask it to exit so it
+   // can choose where to stop the animation.
+   property_set("service.bootanim.exit", "1");
+}
+
+在bootanim的main()中会通过ServiceManager来检查SurfaceFlinger是否已启动，确定了SurfaceFlinger启动后会new BootAnimation的实例。
+
+int main()
+{
+      setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_DISPLAY);
+  
+      char value[PROPERTY_VALUE_MAX];
+      property_get("debug.sf.nobootanimation", value, "0");
+      int noBootAnimation = atoi(value);
+      if (!noBootAnimation) {
+          property_get("ro.boot.quiescent", value, "0");
+          noBootAnimation = atoi(value);
+      }
+      ALOGI_IF(noBootAnimation,  "boot animation disabled");
+      if (!noBootAnimation) {
+          sp<ProcessState> proc(ProcessState::self());
+          ProcessState::self()->startThreadPool();
+  
+          // TODO: replace this with better waiting logic in future, b/35253872
+          int64_t waitStartTime = elapsedRealtime();
+          sp<IServiceManager> sm = defaultServiceManager();
+          const String16 name("SurfaceFlinger");
+          const int SERVICE_WAIT_SLEEP_MS = 100;
+          const int LOG_PER_RETRIES = 10;
+          int retry = 0;
+          while (sm->checkService(name) == nullptr) {
+              retry++;
+              if ((retry % LOG_PER_RETRIES) == 0) {
+                  ALOGW("Waiting for SurfaceFlinger, waited for %" PRId64 " ms",
+                        elapsedRealtime() - waitStartTime);
+              }
+              usleep(SERVICE_WAIT_SLEEP_MS * 1000);
+          };
+          int64_t totalWaited = elapsedRealtime() - waitStartTime;
+          if (totalWaited > SERVICE_WAIT_SLEEP_MS) {
+              ALOGI("Waiting for SurfaceFlinger took %" PRId64 " ms", totalWaited);
+          }
+  
+          // create the boot animation object
+          sp<BootAnimation> boot = new BootAnimation();		//
+  
+          IPCThreadState::self()->joinThreadPool();
+      }
+      return 0;
+}
+第一次创建BootAnimation的实例引用后进入到onFirstRef()：
+void BootAnimation::onFirstRef() {
+      status_t err = mSession->linkToComposerDeath(this);
+      ALOGE_IF(err, "linkToComposerDeath failed (%s) ", strerror(-err));
+      if (err == NO_ERROR) {
+          run("BootAnimation", PRIORITY_DISPLAY);//启动线程
+      }
+  }
+在onFirstRef中启动了线程BootAnimation, 第一次执行会运行线程的readyToRun()方法，再执行threadLoop(),所以先看readyToRun：
+status_t BootAnimation::readyToRun() {
+    mAssets.addDefaultAssets();
+ 
+    sp<IBinder> dtoken(SurfaceComposerClient::getBuiltInDisplay(
+            ISurfaceComposer::eDisplayIdMain));
+    DisplayInfo dinfo;
+    status_t status = SurfaceComposerClient::getDisplayInfo(dtoken, &dinfo);
+    if (status)
+        return -1;
+    // create the native surface
+    sp<SurfaceControl> control = session()->createSurface(String8("BootAnimation"),
+            dinfo.w, dinfo.h, PIXEL_FORMAT_RGB_565);
+    SurfaceComposerClient::openGlobalTransaction();
+    control->setLayer(0x40000000);
+    SurfaceComposerClient::closeGlobalTransaction();
+ 
+    sp<Surface> s = control->getSurface();
+ 
+    // initialize opengl and egl
+    const EGLint attribs[] = {
+            EGL_RED_SIZE,   8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE,  8,
+            EGL_DEPTH_SIZE, 0,
+            EGL_NONE
+    };
+    EGLint w, h;
+    EGLint numConfigs;
+    EGLConfig config;
+    EGLSurface surface;
+    EGLContext context;
+    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+ 
+    eglInitialize(display, 0, 0);
+    eglChooseConfig(display, attribs, &config, 1, &numConfigs);
+    surface = eglCreateWindowSurface(display, config, s.get(), NULL);
+    context = eglCreateContext(display, config, NULL, NULL);
+    eglQuerySurface(display, surface, EGL_WIDTH, &w);
+    eglQuerySurface(display, surface, EGL_HEIGHT, &h);
+ 
+    if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE)
+        return NO_INIT;
+    mDisplay = display;
+    mContext = context;
+    mSurface = surface;
+    mWidth = w;
+    mHeight = h;
+    mFlingerSurfaceControl = control;
+    mFlingerSurface = s;
+ 
+    // If the device has encryption turned on or is in process
+    // of being encrypted we show the encrypted boot animation.
+    char decrypt[PROPERTY_VALUE_MAX];
+    property_get("vold.decrypt", decrypt, "");
+ 
+    bool encryptedAnimation = atoi(decrypt) != 0 ||
+        !strcmp("trigger_restart_min_framework", decrypt);
+    if (!mShuttingDown && encryptedAnimation && (access(
+            getAnimationFileName(SYSTEM_ENCRYPTED_BOOTANIMATION_FILE
+            ,mShuttingDown),R_OK) == 0)){
+        mZipFileName =getAnimationFileName(SYSTEM_ENCRYPTED_BOOTANIMATION_FILE,
+                mShuttingDown);
+        return NO_ERROR;
+    }
+ 
+    static const char* bootFiles[] = 
+            {OEM_BOOTANIMATION_FILE,SYSTEM_BOOTANIMATION_FILE};
+    static const char* shutdownFiles[] =
+            {OEM_SHUTDOWNANIMATION_FILE, SYSTEM_SHUTDOWNANIMATION_FILE};
+ 
+    for (const char* f : (!mShuttingDown ? bootFiles : shutdownFiles)) {
+        if (access(getAnimationFileName(f,mShuttingDown), R_OK) == 0) {
+            mZipFileName = getAnimationFileName(f,mShuttingDown);
+            return NO_ERROR;
+        }
+    }
+    return NO_ERROR;
+}
+
+
+这里主要做了：
+	为bootnanimation创建native surface
+	初始化 opengl and egl
+	判断是否显示 encrypted boot animation
+	获取AnimationFileName：mZipFileName
+
+BootAnimation类的成员函数session用来返回BootAnimation类的成员变量mSession所描述的一个SurfaceComposerClient对象。
+通过调用SurfaceComposerClient对象mSession的成员函数createSurface可以获得一个SurfaceControl对象control。
+
+SurfaceComposerClient类的成员函数createSurface首先调用内部的Binder代理对象mClient来请求SurfaceFlinger返回一个类型为SurfaceLayer的Binder代理对象，接着再使用这个Binder代理对象来创建一个SurfaceControl对象。创建出来的SurfaceControl对象的成员变量mSurface就指向了从SurfaceFlinger返回来的类型为SurfaceLayer的Binder代理对象。有了这个Binder代理对象之后，SurfaceControl对象就可以和SurfaceFlinger服务通信了。
+
+调用SurfaceControl对象control的成员函数getSurface会返回一个Surface对象s。这个Surface对象s内部也有一个类型为SurfaceLayer的Binder代理对象mSurface，这个Binder代理对象与前面所创建的SurfaceControl对象control的内部的Binder代理对象mSurface引用的是同一个SurfaceLayer对象。这样，Surface对象s也可以通过其内部的Binder代理对象mSurface来和SurfaceFlinger服务通信。
+
+   Surface类继承了ANativeWindow类。ANativeWindow类是连接OpenGL和Android窗口系统的桥梁，即OpenGL需要通过ANativeWindow类来间接地操作Android窗口系统。这种桥梁关系是通过EGL库来建立的，所有以egl为前缀的函数名均为EGL库提供的接口。
+ 
+   为了能够在OpenGL和Android窗口系统之间的建立一个桥梁，我们需要一个EGLDisplay对象display，一个EGLConfig对象config，一个EGLSurface对象surface，以及一个EGLContext对象context，其中，EGLDisplay对象display用来描述一个EGL显示屏，EGLConfig对象config用来描述一个EGL帧缓冲区配置参数，EGLSurface对象surface用来描述一个EGL绘图表面，EGLContext对象context用来描述一个EGL绘图上下文（状态），它们是分别通过调用egl库函数eglGetDisplay、EGLUtils::selectConfigForNativeWindow、eglCreateWindowSurface和eglCreateContext来获得的。注意，EGLConfig对象config、EGLSurface对象surface和EGLContext对象context都是用来描述EGLDisplay对象display的。有了这些对象之后，就可以调用函数eglMakeCurrent来设置当前EGL库所使用的绘图表面以及绘图上下文。  
+ 
+   还有另外一个地方需要注意的是，每一个EGLSurface对象surface有一个关联的ANativeWindow对象。这个ANativeWindow对象是通过函数eglCreateWindowSurface的第三个参数来指定的。在我们这个场景中，这个ANativeWindow对象正好对应于前面所创建的 Surface对象s。每当OpenGL需要绘图的时候，它就会找到前面所设置的绘图表面，即EGLSurface对象surface。有了EGLSurface对象surface之后，就可以找到与它关联的ANativeWindow对象，即Surface对象s。有了Surface对象s之后，就可以通过其内部的Binder代理对象mSurface来请求  SurfaceFlinger服务返回帧缓冲区硬件设备的一个图形访问接口。这样，OpenGL最终就可以将要绘制的图形渲染到帧缓冲区硬件设备中去，即显示在实际屏幕上。屏幕的大小，即宽度和高度，可以通过函数eglQuerySurface来获得。
+线程的首次准备工作在这里完成后，开始执行threadLoop()： 
+threadLoop()函数如果返回值为false，则该函数中的内容只会执行一次；如果返回true，则会不停的执行。这里返回false，因此只会执行一次。
+
+bool BootAnimation::threadLoop()
+{
+    bool r;
+    // We have no bootanimation file, so we use the stock android logo
+    // animation.
+    if (mZipFileName.isEmpty()) {
+        r = android();
+    } else {
+        r = movie();
+    }
+ 
+    eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroyContext(mDisplay, mContext);
+    eglDestroySurface(mDisplay, mSurface);
+    mFlingerSurface.clear();
+    mFlingerSurfaceControl.clear();
+    eglTerminate(mDisplay);
+    eglReleaseThread();
+    IPCThreadState::self()->stopProcess();
+    return r;
+}
+
+如果我们没有自己的bootanimation文件name就执行android()，否则执行movie()。
+这里我们关注的是自己的bootanimation文件的播放，来看movie()：
+
+bool BootAnimation::movie()
+{
+    Animation* animation = loadAnimation(mZipFileName);
+    if (animation == NULL)
+        return false;
+ 
+    ......
+ 
+    playAnimation(*animation);  //播放Animation
+ 
+    ......
+}
+首先movies()进行loadAnimation ; 然后在movies()中执行playAnimation
+先看loadAnimation():
+
+BootAnimation::Animation* BootAnimation::loadAnimation(const String8& fn)
+{
+    if (mLoadedFiles.indexOf(fn) >= 0) {
+        ALOGE("File \"%s\" is already loaded. Cyclic ref is not allowed",
+            fn.string());
+        return NULL;
+    }
+    ZipFileRO *zip = ZipFileRO::open(fn);
+    if (zip == NULL) {
+        ALOGE("Failed to open animation zip \"%s\": %s",
+            fn.string(), strerror(errno));
+        return NULL;
+    }
+ 
+    Animation *animation =  new Animation;
+    animation->fileName = fn;
+    animation->zip = zip;
+    animation->clockFont.map = nullptr;
+    mLoadedFiles.add(animation->fileName);
+ 
+    parseAnimationDesc(*animation);
+    if (!preloadZip(*animation)) {
+        return NULL;
+    }
+ 
+ 
+    mLoadedFiles.remove(fn);
+    return animation;
+}
+
+这里两个重要的事情parseAnimationDesc和preloadZip
+parseAnimationDesc是解析描述文件desc.txt并保存在animation对象中, 这个文件打包在bootanimation.zip中如下所示：
+
+
+
+而preloadZip,下面这段代码是读取每个片段中的png图片，并保存在animation.parts.frames中。
+
+bool BootAnimation::preloadZip(Animation& animation)
+{
+    // read all the data structures
+    const size_t pcount = animation.parts.size();
+    void *cookie = NULL;
+    ZipFileRO* zip = animation.zip;
+    ......
+ 
+    Animation::Part* partWithAudio = NULL;
+    ZipEntryRO entry;
+    char name[ANIM_ENTRY_NAME_MAX];
+    while ((entry = zip->nextEntry(cookie)) != NULL) {
+        const int foundEntryName = zip->getEntryFileName(entry, name, ANIM_ENTRY_NAME_MAX);
+        if (foundEntryName > ANIM_ENTRY_NAME_MAX || foundEntryName == -1) {
+            ALOGE("Error fetching entry file name");
+            continue;
+        }
+ 
+        const String8 entryName(name);
+        const String8 path(entryName.getPathDir());
+        const String8 leaf(entryName.getPathLeaf());
+        if (leaf.size() > 0) {
+            if (entryName == CLOCK_FONT_ZIP_NAME) {
+                FileMap* map = zip->createEntryFileMap(entry);
+                if (map) {
+                    animation.clockFont.map = map;
+                }
+                continue;
+            }
+ 
+            for (size_t j = 0; j < pcount; j++) {
+                if (path == animation.parts[j].path) {
+                    uint16_t method;
+                    // supports only stored png files
+                    if (zip->getEntryInfo(entry, &method, NULL, NULL, NULL, NULL, NULL)) {
+                        if (method == ZipFileRO::kCompressStored) {
+                            FileMap* map = zip->createEntryFileMap(entry);
+                            if (map) {
+                                Animation::Part&
+                                         part(animation.parts.editItemAt(j));
+                                if (leaf == "audio.wav") {
+                                    // a part may have at most one audio file
+                                    part.audioData = (uint8_t *)map
+                                            ->getDataPtr();
+                                    part.audioLength = map->getDataLength();
+                                    partWithAudio = &part;
+                                } else if (leaf == "trim.txt") {
+                                    part.trimData.setTo((char const*)map
+                                            ->getDataPtr(), map
+                                            ->getDataLength());
+                                } else {
+                                    Animation::Frame frame;
+                                    frame.name = leaf;
+                                    frame.map = map;
+                                    frame.trimWidth = animation.width;
+                                    frame.trimHeight = animation.height;
+                                    frame.trimX = 0;
+                                    frame.trimY = 0;
+                                    part.frames.add(frame);
+                                }
+                            }
+                        } else {
+                            ALOGE("bootanimation.zip is compressed; must be only stored");
+                        }
+                    }
+                }
+            }
+        }
+    }
+ 
+    // If there is trimData present, override the positioning defaults.
+    for (Animation::Part& part : animation.parts) {
+        const char* trimDataStr = part.trimData.string();
+        for (size_t frameIdx = 0; frameIdx < part.frames.size(); frameIdx++) {
+            const char* endl = strstr(trimDataStr, "\n");
+            // No more trimData for this part.
+            if (endl == NULL) {
+                break;
+            }
+            String8 line(trimDataStr, endl - trimDataStr);
+            const char* lineStr = line.string();
+            trimDataStr = ++endl;
+            int width = 0, height = 0, x = 0, y = 0;
+            if (sscanf(lineStr, "%dx%d+%d+%d", &width, &height, &x, &y) == 4) {
+                Animation::Frame& frame(part.frames.editItemAt(frameIdx));
+                frame.trimWidth = width;
+                frame.trimHeight = height;
+                frame.trimX = x;
+                frame.trimY = y;
+            } else {
+                ALOGE("Error parsing trim.txt, line: %s", lineStr);
+                break;
+            }
+        }
+    }
+ 
+    // Create and initialize audioplay if there is a wav file in any of the animations.
+    // Do it on a separate thread so we don't hold up the animation intro.
+    if (partWithAudio != NULL) {
+        ALOGD("found audio.wav, creating playback engine");
+        mInitAudioThread = new InitAudioThread(partWithAudio->audioData,
+                                               partWithAudio->audioLength);
+        mInitAudioThread->run("BootAnimation::InitAudioThread", PRIORITY_NORMAL);
+    }
+ 
+    zip->endIteration(cookie);
+ 
+    return true;
+}
+可以看到animation中如果有audio.wav会被解析保存在part.audioData，开机时进行播放。audio.wav可以放到part0中。
+解析完成后返回animation给playAnimation()进行播放
+
+loadAnimation完成接着playAnimation():
+
+bool BootAnimation::playAnimation(const Animation& animation)
+{
+    const size_t pcount = animation.parts.size();
+    nsecs_t frameDuration = s2ns(1) / animation.fps;
+    const int animationX = (mWidth - animation.width) / 2;
+    const int animationY = (mHeight - animation.height) / 2;
+ 
+    ALOGD("%sAnimationShownTiming start time: %" PRId64 "ms", mShuttingDown ? "Shutdown" : "Boot",
+            elapsedRealtime());
+    for (size_t i=0 ; i<pcount ; i++) {
+        const Animation::Part& part(animation.parts[i]);
+        const size_t fcount = part.frames.size();
+        glBindTexture(GL_TEXTURE_2D, 0);
+ 
+        // Handle animation package
+        if (part.animation != NULL) {
+            playAnimation(*part.animation);
+            if (exitPending())
+                break;
+            continue; //to next part
+        }
+ 
+        for (int r=0 ; !part.count || r<part.count ; r++) {
+            // Exit any non playuntil complete parts immediately
+            if(exitPending() && !part.playUntilComplete)
+                break;
+ 
+            // only play audio file the first time we animate the part
+            if (r == 0 && part.audioData && playSoundsAllowed()) {
+                ALOGD("playing clip for part%d, size=%d", (int) i, part.audioLength);
+                // Block until the audio engine is finished initializing.
+                if (mInitAudioThread != nullptr) {
+                    mInitAudioThread->join();
+                }
+                audioplay::playClip(part.audioData, part.audioLength);
+            }
+ 
+            glClearColor(
+                    part.backgroundColor[0],
+                    part.backgroundColor[1],
+                    part.backgroundColor[2],
+                    1.0f);
+ 
+            for (size_t j=0 ; j<fcount && (!exitPending() || part.playUntilComplete) ; j++) {
+                const Animation::Frame& frame(part.frames[j]);
+                nsecs_t lastFrame = systemTime();
+ 
+                if (r > 0) {
+                    glBindTexture(GL_TEXTURE_2D, frame.tid);
+                } else {
+                    if (part.count != 1) {
+                        glGenTextures(1, &frame.tid);
+                        glBindTexture(GL_TEXTURE_2D, frame.tid);
+                        glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                        glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    }
+                    int w, h;
+                    initTexture(frame.map, &w, &h);
+                }
+ 
+                const int xc = animationX + frame.trimX;
+                const int yc = animationY + frame.trimY;
+                Region clearReg(Rect(mWidth, mHeight));
+                clearReg.subtractSelf(Rect(xc, yc, xc+frame.trimWidth, yc+frame.trimHeight));
+                if (!clearReg.isEmpty()) {
+                    Region::const_iterator head(clearReg.begin());
+                    Region::const_iterator tail(clearReg.end());
+                    glEnable(GL_SCISSOR_TEST);
+                    while (head != tail) {
+                        const Rect& r2(*head++);
+                        glScissor(r2.left, mHeight - r2.bottom, r2.width(), r2.height());
+                        glClear(GL_COLOR_BUFFER_BIT);
+                    }
+                    glDisable(GL_SCISSOR_TEST);
+                }
+                // specify the y center as ceiling((mHeight - frame.trimHeight) / 2)
+                // which is equivalent to mHeight - (yc + frame.trimHeight)
+                glDrawTexiOES(xc, mHeight - (yc + frame.trimHeight),
+                              0, frame.trimWidth, frame.trimHeight);
+                if (mClockEnabled && mTimeIsAccurate && validClock(part)) {
+                    drawClock(animation.clockFont, part.clockPosX, part.clockPosY);
+                }
+ 
+                eglSwapBuffers(mDisplay, mSurface);
+ 
+                nsecs_t now = systemTime();
+                nsecs_t delay = frameDuration - (now - lastFrame);
+                //ALOGD("%lld, %lld", ns2ms(now - lastFrame), ns2ms(delay));
+                lastFrame = now;
+ 
+                if (delay > 0) {
+                    struct timespec spec;
+                    spec.tv_sec  = (now + delay) / 1000000000;
+                    spec.tv_nsec = (now + delay) % 1000000000;
+                    int err;
+                    do {
+                        err = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &spec, NULL);
+                    } while (err<0 && errno == EINTR);
+                }
+ 
+                checkExit();
+            }
+ 
+            usleep(part.pause * ns2us(frameDuration));
+ 
+            // For infinite parts, we've now played them at least once, so perhaps exit
+            if(exitPending() && !part.count)
+                break;
+        }
+ 
+    }
+ 
+    // Free textures created for looping parts now that the animation is done.
+    for (const Animation::Part& part : animation.parts) {
+        if (part.count != 1) {
+            const size_t fcount = part.frames.size();
+            for (size_t j = 0; j < fcount; j++) {
+                const Animation::Frame& frame(part.frames[j]);
+                glDeleteTextures(1, &frame.tid);
+            }
+        }
+    }
+ 
+    // we've finally played everything we're going to play
+    audioplay::setPlaying(false);
+    audioplay::destroy();
+ 
+    return true;
+}
+exitPending()—如果SurfaceFlinger服务通知bootanimation停止显示动画，则该函数返回值为true，否则为false
+--------------------------------------------------------------------
+WMS通知关闭开机动画
+--------------------------------------------------------------------
+当System进程将系统中的关键服务启动起来之后，就会将应用程序启动器（Launcher）启动起来。 一个Activity组件在启动起来之后，就会被记录起来，等到它所运行在的主线程空闲的时候，这个主线程就会向ActivityManagerService发送一个Activity组件空闲的通知。由于应用程序Launcher是系统中第一个被启动的应用程序，即它的根Activity组件是系统中第一个被启动的Activity组件，因此，当ActivityManagerService接收到它的空闲通知的时候，就可以知道系统是刚刚启动起来的。在这种情况下，ActivityManagerService收到消息FINISH_BOOTING_MSG，调用AMS的enableScreenAfterBoot方法，这样才能停止显示开机动画，以便可以在屏幕中显示应用程序Lancher的界面。
+
+enableScreenAfterBoot()
+
+    void enableScreenAfterBoot() {
+          EventLog.writeEvent(EventLogTags.BOOT_PROGRESS_ENABLE_SCREEN,
+                  SystemClock.uptimeMillis());
+          mWindowManager.enableScreenAfterBoot();
+ 
+          synchronized (this) {
+              updateEventDispatchingLocked();
+          }
+      }
+在WMS的enableScreenAfterBoot方法中又会调用performEnableScreen方法
+    private void performEnableScreen() {
+        synchronized(mWindowMap) {
+        ...
+            if (mDisplayEnabled) {
+                return;
+            }
+            if (!mSystemBooted && !mShowingBootMessages) {
+                return;
+            }
+ 
+            if (!mShowingBootMessages && !mPolicy.canDismissBootAnimation()) {
+                return;
+            }
+ 
+            // Don't enable the screen until all existing windows have been drawn.
+            if (!mForceDisplayEnabled
+                    // TODO(multidisplay): Expand to all displays?
+                    && getDefaultDisplayContentLocked().checkWaitingForWindows()) {
+                return;
+            }
+ 
+            if (!mBootAnimationStopped) {
+                // Do this one time.
+                Trace.asyncTraceBegin(TRACE_TAG_WINDOW_MANAGER, "Stop bootanim", 0);
+                try {
+                    IBinder surfaceFlinger = 
+                           ServiceManager.getService("SurfaceFlinger");
+                    if (surfaceFlinger != null) {
+                        Parcel data = Parcel.obtain();
+                        data.writeInterfaceToken("android.ui.ISurfaceComposer");
+                       // BOOT_FINISHED
+                        surfaceFlinger.transact(IBinder.FIRST_CALL_TRANSACTION, 
+                                data, null, 0);
+                        data.recycle();
+                    }
+                } catch (RemoteException ex) {
+                    Slog.e(TAG_WM, "Boot completed: SurfaceFlinger is dead!");
+                }
+                mBootAnimationStopped = true;
+            }
+            ......
+            EventLog.writeEvent(EventLogTags.WM_BOOT_ANIMATION_DONE, 
+                    SystemClock.uptimeMillis());
+            Trace.asyncTraceEnd(TRACE_TAG_WINDOW_MANAGER, "Stop bootanim", 0);
+            mDisplayEnabled = true;
+            if (DEBUG_SCREEN_ON || DEBUG_BOOT) Slog.i(TAG_WM, 
+                    "******************** ENABLING SCREEN!");
+ 
+            // Enable input dispatch.
+            mInputMonitor.setEventDispatchingLw(mEventDispatchingEnabled);
+        }
+ 
+        try {
+            mActivityManager.bootAnimationComplete();
+        } catch (RemoteException e) {
+        }
+ 
+        mPolicy.enableScreenAfterBoot();
+ 
+        // Make sure the last requested orientation has been applied.
+        updateRotationUnchecked(false, false);
+    }
+WMS的performEnableScreen方法，通过Binder调用SurfaceFlinger的transact的FIRST_CALL_TRANSACTION,通过mActivityManager.bootAnimationComplete()去执行finishBooting(）方法：
+// Let system services know.          mSystemServiceManager.startBootPhase(SystemService.PHASE_BOOT_COMPLETED);
+1
+最后会在SurfaceFlinger的bootFinshed函数中设置service.bootanim.exit属性为1，这个后面会决定bootanim进程什么时候关闭。
+
+void SurfaceFlinger::bootFinished(){
+...
+// stop boot animation
+// formerly we would just kill the process, but we now ask it to exit so it
+// can choose where to stop the animation.
+   property_set("service.bootanim.exit", "1");
+
+
+--------------------------------------------------------------------
+动画以及铃声定制
+--------------------------------------------------------------------
+
+开机动画：
+
+1) 制作bootanimation.zip。
+
+制作方法举例如下： 
+分别创建名为“part0”和“part1”的文件夹以及一个名为“desc.txt”文件。
+“part0”中存储动画的第一阶段的资源图片，“part1”存储第二阶段的资源图片，注意图片为png格式。
+
+desc.txt文件由若干行组成，每一行代表一种描述
+播放控制由“desc.txt”指定，内容如下： 
+720 1080 30 
+p 1 0 part0 
+p 0 0 part1 
+c 0 0 part2 
+c 1 0 part3
+
+各参数功能如下： ( 注意：desc.txt文本内容必须用单个空格隔开，且不能有多余空行。)
+
+720	1080	30	 
+宽	高	每秒播放帧数	 
+p	1	0	part0
+标志符	循环次数	阶段切换间隔时间	对应目录名
+p	0	0	part1
+标志符	循环次数	阶段切换间隔时间	对应目录名
+
+第1行：用来描述开机动画在屏幕显示的大小及速度。具体为：开机动画的宽度为720个像素，高度为1080个像素，显示频率为每秒30帧，即每帧显示1/30秒
+
+下面的每一行代表一个片段，显示的时候会按照顺序从上到下依次显示。 
+第1个字符为片段类型，有’c’和’p’两种 
+第2个数字为该片段重复显示的次数，如果为‘0’，表示会无限重复显示； 
+第3个数字为两次显示之间的间隔，单位为第一行中定义的每帧显示的时间； 
+第4个字符串为该片段所在的文件夹，一个片段可以由多个png图片组成，都存放在folder文件夹中
+
+例如：
+
+“c 0 0 part2”代表该片段无限循环显示，且两次显示的间隔为0s，与下一个片段间隔0s，该片段的显示图路径为bootanimation.zip/part2。
+若exitPending()返回值为true，即SurfaceFlinger服务要求bootanimation停止显示动画，则不管当前显示到哪个片段或png图片，都会导致退出for循环，从而停止开机动画的显示。 
+
+
+在Android5.x中，加入了“c”片段。对于以”c”标识的片段，即使exitPending()返回值为true，也会继续显示。
+
+这一点在BootAnimation::parseAnimationDesc中可以看到：
+
+        if (sscanf(l, "%d %d %d", &width, &height, &fps) == 3) {
+            ALOGD("> w=%d, h=%d, fps=%d", width, height, fps);
+            animation.width = width;
+            animation.height = height;
+            animation.fps = fps;
+        } else if (sscanf(l, " %c %d %d %s #%6s %16s %16s",
+               &pathType, &count, &pause, path, color, clockPos1, 
+               clockPos2) >= 4) {
+            ALOGD("> type=%c, count=%d, pause=%d, path=%s, color=%s,    
+                    clockPos1=%s, clockPos2=%s",pathType, count, pause,  
+                    path, color, clockPos1, clockPos2);
+            Animation::Part part;
+            part.playUntilComplete = pathType == 'c';
+            part.count = count;
+            part.pause = pause;
+            part.path = path;
+            part.audioData = NULL;
+            part.animation = NULL;
+
+最后，将这5个组件通过存储压缩的方式压缩为bootanimation.zip文件即制作完成。
+
+
+2) 预置开机动画。预置的过程如下： 
+
+	将制作完成的bootanimation.zip文件放在工程的资源目录下...
+
+
+
+
+添加开机铃声：
+方案一：animation.zip
+
+直接在animation.zip包中的part0目录下放上audio.wav文件，如果解析出audio.wav会保存在保存在animation的part.audioData中给系统播放。
+注意需要为wav文件
+
+方案二：使用MediaPlay实现的思路
+
+1 先将要设置为铃声的音乐文件更名为bootaudio.mp3,注意需要为mp3文件。
+
+2 将该文件放入工程的资源目录下，如frameworks\base\data\sounds\newwavelabs， 
+  修改Android.mk文件，将该文件编译到system\media\路径下，添加如下语句：
+         $(LOCAL_PATH)/newwavelabs/bootaudio.mp3:system/media/bootaudio.mp3
+3 修改 Makefile文件
+LOCAL_SHARED_LIBRARIES += \  
+    libmedia  
+
+
+修改BootAnimation.cpp 
+添加：
+
+#include <system/audio.h>  
+ 
+ 
+bool BootAnimation :: soundplay()  
+{  
+    mfd = open(xxxxx, O_RDONLY); //xxxxx为音乐文件  
+ 
+    mp = new MediaPlayer();  
+    mp->setDataSource(mfd, 0, 0x7ffffffffffffffLL);  
+    mp->setAudioStreamType(/*AUDIO_STREAM_MUSIC*/AUDIO_STREAM_SYSTEM);  
+    mp->prepare();  
+    mp->start();  
+}  
+ 
+bool BootAnimation::soundstop()  
+{  
+    if (mp != NULL)   
+        mp->stop();  
+}  
+在BootAnimation playAnimation时或者threadloop时进行播放；动画播放完movies()执行完停止播放。
+
+例如：
+#include <media/mediaplayer.h>
+#include <media/MediaPlayerInterface.h>
+ 
+bool BootAnimation::threadLoop()
+{
+    bool r;
+    //声明MediaPlayer变量
+    sp<MediaPlayer> mediaplayer;
+    const char* resourcePath = initAudioPath();
+    status_t mediastatus = NO_ERROR;
+    if (resourcePath != NULL) {
+        bPlayMP3 = true;
+        ALOGD("sound file path: %s", resourcePath);
+        mediaplayer = new MediaPlayer();//创建MediaPlayer实例
+        mediastatus = mediaplayer->setDataSource(NULL, resourcePath, NULL);
+ 
+        sp<BootVideoListener> listener = new BootVideoListener(this);
+        mediaplayer->setListener(listener);
+ 
+        if (mediastatus == NO_ERROR) {
+            ALOGD("mediaplayer is initialized");
+            Parcel* attributes = new Parcel();
+            attributes->writeInt32(AUDIO_USAGE_MEDIA);            
+            //usage
+            attributes->writeInt32(AUDIO_CONTENT_TYPE_MUSIC);    
+            //audio_content_type_t
+            attributes->writeInt32(AUDIO_SOURCE_DEFAULT);   
+            //audio_source_t
+            attributes->writeInt32(0);   
+            //audio_flags_mask_t
+            attributes->writeInt32(1);  
+            //kAudioAttributesMarshallTagFlattenTags of mediaplayerservice.cpp
+            attributes->writeString16(String16("BootAnimationAudioTrack")); // tags
+            mediaplayer->setParameter(KEY_PARAMETER_AUDIO_ATTRIBUTES, *attributes);
+            mediaplayer->setAudioStreamType(AUDIO_STREAM_MUSIC);
+            mediastatus = mediaplayer->prepare();
+        }
+        if (mediastatus == NO_ERROR) {
+            ALOGD("media player is prepared");
+            mediastatus = mediaplayer->start();
+        }
+ 
+    }else{
+        bPlayMP3 = false;
+    }
+ 
+    if ((mZip == NULL)&&(mZipFileName.isEmpty())) {
+        r = android();
+    } else if(mZip != NULL){
+        if (!bETC1Movie) {
+            ALOGD("threadLoop() movie()");
+            r = movie();
+        } else {
+            ALOGD("threadLoop() ETC1movie()");
+            r = ETC1movie();
+        }
+    }
+    else
+    {
+        r = android();
+    }
+ 
+    if (resourcePath != NULL) {
+        if (mediastatus == NO_ERROR) {
+            ALOGD("mediaplayer was stareted successfully, now it is 
+                    going to be stoped");
+            mediaplayer->stop();
+            mediaplayer->disconnect();
+            mediaplayer.clear();
+        }
+    }
+    eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroyContext(mDisplay, mContext);
+    eglDestroySurface(mDisplay, mSurface);
+    mFlingerSurface.clear();
+    mFlingerSurfaceControl.clear();
+    eglTerminate(mDisplay);
+    eglReleaseThread();
+    IPCThreadState::self()->stopProcess();
+    return r;
+}
+ 
+BootAnimation::~BootAnimation() {
+ 
+    if (mZip != NULL) {
+        delete mZip;
+    }
+ 
+    if (mProgram) {
+        ALOGD("mProgram: %d", mProgram);
+        glDeleteProgram(mProgram);
+    }
+}
+ 
+BootVideoListener::BootVideoListener(const sp<BootAnimation> &bootanim) {
+    ALOGD("[BootAnimation %s %d]",__FUNCTION__,__LINE__);
+    mBootanim = bootanim;
+}
+ 
+BootVideoListener::~BootVideoListener() {
+    ALOGD("[BootAnimation %s %d]",__FUNCTION__,__LINE__);
+}
+ 
+void BootVideoListener::notify(int msg, int ext1, int ext2, const Parcel  
+       *obj) {
+    ALOGD("[BootAnimation %s %d] msg=%d ext1=%d ext2=%d",
+            __FUNCTION__,__LINE__, msg, ext1, ext2);
+    if(msg == MEDIA_PLAYBACK_COMPLETE || msg == MEDIA_SEEK_COMPLETE) {
+        mBootanim->setBootVideoPlayState(MEDIA_PLAYBACK_COMPLETE);
+        ALOGD("[BootAnimation %s %d] media player 
+                complete",__FUNCTION__,__LINE__);
+    }
+    if(msg == MEDIA_ERROR || msg == MEDIA_SKIPPED) {
+        mBootanim->setBootVideoPlayState(MEDIA_ERROR);
+        ALOGD("[BootAnimation %s %d] media player error",__FUNCTION__,__LINE__);
+    }
+ 
+    if(obj == NULL){
+        ALOGD("[BootAnimation %s %d]obj is null \n",__FUNCTION__,__LINE__);
+    }
+}
+ 
+void BootAnimation::setBootVideoPlayState(int playState){
+    mBootVideoPlayState = playState;
+    ALOGD("[BootAnimation %s %d]mBootVideoPlayState=%d",
+            __FUNCTION__,__LINE__, mBootVideoPlayState);
+}
+
+
