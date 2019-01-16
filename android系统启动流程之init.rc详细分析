@@ -1,0 +1,464 @@
+---------------------------------------------------------------------------
+android启动流程之init.rc详细分析
+---------------------------------------------------------------------------
+对于系统的启动流程的掌握，最好是深入分析init.rc、init.xx.rc等文件。这些文件对系统的整体认识有很大的帮助。
+
+
+关于init.rc的几点说明：
+
+(1)解析init.rc，init.xx.rc的相关文件目录system/core/init/
+
+(2)init.c 、init.rc init.xx.rc 等, 最终会编译到ramdisk.img(根文件系统)中, 和kernel一起打包成boot.img.
+	android每次启动后都会从boot.img中解压出init.c等文件到内存，所以要修改必须修改替换boot.img.
+
+(3)在init.rc中启动的服务，都是以一个进程的形式运行，属于android的本地服务。
+	通过在终端输入 busybox ps -T 命令可以查看在运行的相应进程，他们的ppid都为1，代表init进程。
+	init进程也是android系统启动的第一个应用进程。
+
+
+
+---------------------------------------------------------------------------
+init.rc （Android Init Language）语法详解：
+---------------------------------------------------------------------------
+
+(1)init.rc语法的四个组成原件：
+	Actions  ：动作 ，使用格式： on <Triggers>,下面行跟各种command
+	Commands ：命令
+	Services ：服务  使用格式 ： service <name> <pathname> [ <argument> ]* ，下面行可以添加Options
+	Options ： 选项
+
+(2)init.rc中三大模块：
+	import 导入其他的init.xx.rc文件。
+	以action动作为触发点的一系列命令 
+	带有各种Options的一系列services的定义
+
+
+import /init.${ro.hardware}.rc
+通过cat proc/cpuinfo可以查看ro.hardware的值=Hardware的值
+
+on <trigger>    //action 模型
+   <command>
+   <command>
+   <command>
+   ....
+   
+service <name> <pathname> [ <argument> ]*   （services可以带有多个参数和选项）
+   <option>
+   <option>
+   ...  
+
+---------------------------------------------------------------------------
+对Actions官方描述的一些理解：
+---------------------------------------------------------------------------
+当action的trigger被匹配后，action会被加入到动作执行队列中，
+在队列中的action按队列顺序被执行，每个action下面的command也是按顺序执行。
+
+
+triggers:
+	是跟在 on 后面的动作名，用来触发action下面command的执行
+
+	(1)android常用的triggers的名字: 
+		early-init，init，early-fs，fs，post-fs，early-boot，boot (这些都是在init.c中触发)
+
+	(2)可以自定义一些triggers，并选择合适的触发方式 (如: 关机充电功能，可以只启动charger服务进程)
+
+	(3)<name>=<value> 形式，如：on property:ro.debuggable=1
+
+	(4)device-added-<path>
+	   device-removed-<path>       
+	   
+		Triggers of these forms occur when a device node is added or removed
+		一个设备节点/dev/XXX添加或者删除时可以触发一个action，这个可以很好的去利用
+	  
+	(5).service-exited-<name>   
+	   Triggers of this form occur when the specified service exits.
+	   当某个服务退出时，可以触发一个action
+
+
+option 选项:
+	用于services下面.
+	android新版本上增加的一些options,可以通过源码查看对应作用
+	init_parser.c
+		-->lookup_keyword(const char *s)
+			-->parse_line_service()/parse_line_action()
+
+	1)class <class_name>   
+		说明服务属于class_name这个类。缺省值service属于 “default” 类。
+		同一个class下面的服务,可以一起启动或停止。
+
+	2)disabled  
+		表示当这个服务所在的class启动的时候，服务不会自动启动, 要用:
+		start server_name 或
+		property_set("ctl.start", server_name);或
+		setprop ctl.stop service_name		//比如暂停HAL Gnss服务, service_name是在.rc启动脚本里定义的服务名.
+		才能启动/暂停服务。
+	 
+	3)oneshot   
+		当服务退出后，不会再重新启动. 如果没有加这个option，则服务默认退出后又会重新重启.
+
+	4)user <username>
+		执行服务之前，先声明服务的用户名，缺省值应该为root用户.
+		如果你的进程要求具有linux内核能力，必须保证它的用户为root.
+
+	5)group <groupname> [ <groupname> ]* 
+		执行服务之前，先声明服务所属组名，可以一次声明属于多个组。
+		声明多个组时，除第一个组名外，其他的为服务的补充组名(调用接口 setgroups()).
+	   
+	6)onrestart + command
+		服务重启时，会执行onrestart后面的command.
+
+		eg：onrestart restart media //重启名为media的服务
+	    
+	7)setenv <name> <value>       
+		在当前服务进程中设置环境变量name的值为value。
+	
+		注意：
+		setenv定义的环境变量仅在本进程内生效，退出该进程，或者关闭相应的程序运行窗口，该环境变量即无效.
+	
+		程序中可通过getenv("name")接口获取这个环境变量的值
+		
+		setenv和export 的区别：
+			setenv  csh:  本进程生效，退出后，变量无效
+			export  bash: 全局生效，一直存在
+		
+			格式：
+				export key=value
+				setenv key value
+
+	8)critical
+		声明为设备的循环服务。如果服务在四分钟内退出了四次，则设备会进入recovery模式
+
+		使用实例: servicemanager、ueventd等服务
+	
+			service servicemanager /system/bin/servicemanager
+			    class core animation
+			    user system
+			    group system readproc
+			    critical
+			    onrestart restart healthd
+			    onrestart restart zygote
+			    onrestart restart audioserver
+			    onrestart restart media
+			    onrestart restart surfaceflinger
+			    onrestart restart inputflinger
+			    onrestart restart drm
+			    onrestart restart cameraserver
+			    onrestart restart keystore
+			    onrestart restart gatekeeperd
+			    writepid /dev/cpuset/system-background/tasks
+			    shutdown critical
+
+
+
+	9)socket <name> <type> <perm> [ <user> [ <group> ] ]  
+		创建名为/dev/socket/<name>的unix domain socket ，并把它的句柄fd传给本服务进程
+	 	<type> 必须为 "dgram", "stream" or "seqpacket". User and group default to 0 ，也就是root.
+	 
+   
+command：
+	action下面的一系列命令
+
+	常用命令：
+	1)import <filename> //导入init.XX.rc、xxx.conf等文件
+		Parse an init config file, extending the current configuration.
+
+	2)chmod <octal-mode> <path>
+		Change file access permissions.
+
+	3)chown <owner> <group> <path>
+		Change file owner and group.
+	   
+	4)chdir <directory>
+		Change working directory.
+	   
+	5)chroot <directory>
+		改变进程根目录 
+	   
+	6)insmod <path>
+		加载XX.ko驱动模块
+
+	7)start <service>
+		Start a service running if it is not already running.
+
+	8)stop <service>
+		Stop a service from running if it is currently running.
+
+	9)class_start <serviceclass>
+		Start all services of the specified class if they are not already running.
+
+	10)class_stop <serviceclass>
+		Stop all services of the specified class if they are currently running.
+		
+		class_reset <serviceclass>   //重启class下面所有的服务
+	      
+	11)setprop <name> <value>
+		Set system property <name> to <value>. 
+		通过getprop命令可以查看当前系统的属性值
+
+		setprop ctl.stop service_name		//比如暂停HAL Gnss服务, service_name是在.rc启动脚本里定义的服务名.
+	   
+	12)export <name> <value>
+		设置全局环境变量，这个变量值可以被所有进程访问（全局的，一直存在）
+		在代码中通过 value = getenv("name"); 接口可以获取这个环境变量的值
+	   
+	13)mkdir <path> [mode] [owner] [group]
+		创建目录，后面项缺省值为 mode，owner，group： 0755 root root
+
+	14)trigger <event>
+		Trigger an action.  Used to queue an action from another action.
+		如: trigger post-fs-data
+
+	15)exec <path> [ <argument> ]*
+		执行<path>指定的Program，并可以带有执行参数。
+		exec在调用进程内部执行一个可执行文件，并会阻塞当前进程，直到运行完成。
+		最好避免和那些builtin commands一样使用exec命令，否则容易造成阻塞 or stuck ( maybe there should be a timeout?)
+
+	16)ifup <interface>
+		启动某个网络接口，使其为up状态，通过netcfg可以查看.
+		ifup eth0  等价于 netcfg eth0 up
+	   
+	17)hostname <name>
+		设置设备的主机名，一般默认设置为localhost.
+		可以在终端通过 hostname new_name 进行修改.
+
+	18)domainname <name>
+		设置网络域名localdomain
+
+	19)mount <type> <device> <dir> [ <mountoption> ]*
+		把device挂接到dir目录下面，文件系统类型为type。
+		<mountoption>s include "ro", "rw", "remount", "noatime", “nosuid”......，具体可查看linux的mount命令说明
+	  
+	20)setkey
+		暂时没有使用
+
+	21)setrlimit <resource> <cur> <max>
+		设置本服务进程的资源上限值。
+
+	22)symlink <target> <path>
+		<path> 链接到 <target> //创建符号链接
+
+	23)sysclktz <mins_west_of_gmt>   
+		设置系统时区(0 if system clock ticks in GMT)
+
+	24)wait <path> [ <timeout> ]
+		轮询查找给定的文件path是否存在，如果找到或者超时则返回. 默认超时为5秒。
+
+		例：
+			# QSEE rpmb listener need symlink for bootdevice
+			wait    /dev/block/platform/soc/${ro.boot.bootdevice}
+			symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
+
+	25)write <path> <string> [ <string> ]*
+		打开一个文件，利用write命令写入一个或多个字符串
+
+
+Properties:
+	Init updates some system properties to provide some insight into what it's doing:
+
+	init.action 
+	   Equal to the name of the action currently being executed or "" if none
+
+	init.command
+	   Equal to the command being executed or "" if none.
+
+	init.svc.<name>
+		State of a named service ("stopped", "running", "restarting") 属性状态.
+		
+	查看：  getprop			//shell
+	设置：  property_set()		//C/JNI
+		setprop ctl.start	//shell
+		setprop ctl.stop	//shell
+
+
+------------------------------------------------------------------------------------
+一些例子：
+------------------------------------------------------------------------------------
+on device-added-/dev/compass
+   start akmd
+
+on device-removed-/dev/compass
+   stop akmd
+
+service akmd /sbin/akmd				//不可以通过logcat输出log信息。
+service akmd /system/bin/logwrapper /sbin/akmd  //可以通过logcat查看akmd服务中的log信息。
+   disabled
+   user akmd
+   group akmd
+
+#############################
+# 注意:
+#############################
+	默认情况下，在init进程中启动的程序(如xx.rc中定义的服务等), 是不能通过logcat查看相关log信息的。
+
+	需要增加logwrapper，才能通过logcat看log。
+
+	如：
+	service akmd /system/bin/logwrapper /sbin/akmd  //可以通过logcat查看akmd服务中的log信息。
+
+
+
+2)实际项目中的一些典型例子:
+
+init.rc文件中的一些参考例子：
+            
+import /init.${ro.hardware}.rc 
+on early-init
+
+    write /proc/1/oom_adj -16
+
+    # Set the security context for the init process.
+    # This should occur before anything else (e.g. ueventd) is started.
+    setcon u:r:init:s0 
+    
+    start ueventd
+    mkdir /mnt 0775 root system
+
+on init
+sysclktz 0
+loglevel 3    设置log输出等级
+
+# setup the global environment
+    export PATH /sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
+    export ANDROID_BOOTLOGO 1
+
+    symlink /system/etc /etc      
+    mount tmpfs tmpfs /mnt/secure mode=0700,uid=0,gid=0
+    write /proc/sys/kernel/panic_on_oops 1
+   
+    mount cgroup none /dev/cpuctl cpu
+    chown system system /dev/cpuctl
+    chmod 0660 /dev/cpuctl/tasks
+
+on fs
+# mount mtd partitions
+    #mount yaffs2 mtd@system /system ro remount
+ 
+on post-fs
+    mount rootfs rootfs / shared rec
+    mount tmpfs tmpfs /mnt/secure private rec
+    # We restorecon /cache in case the cache partition has been reset.
+    restorecon /cache  
+
+on post-fs-data
+    
+    write /proc/apanic_console 1
+    mkdir /data/misc 01771 system misc
+    mkdir /data/misc/adb 02750 system shell 
+    setprop vold.post_fs_data_done 1
+
+
+on boot
+
+# basic network init
+    ifup lo
+    hostname localhost
+    domainname localdomain
+
+# set RLIMIT_NICE to allow priorities from 19 to -20
+    setrlimit 13 40 40
+
+    class_start core
+    class_start main
+
+on charger
+    class_start charger
+
+on property:vold.decrypt=trigger_reset_main 
+    class_reset main
+
+on property:vold.decrypt=trigger_load_persist_props
+    load_persist_props
+    //加载用户空间设置的系统属性persist_props 
+
+on property:vold.decrypt=trigger_post_fs_data
+    trigger post-fs-data
+
+service ueventd /sbin/ueventd
+    class core
+    critical
+    seclabel u:r:ueventd:s0 
+
+on property:selinux.reload_policy=1
+    restart ueventd
+    restart installd
+
+service console /system/bin/sh
+    class core
+    console       //requires console
+    disabled
+    user shell
+    group log
+
+on property:ro.debuggable=1
+    start console
+
+# adbd is controlled via property triggers in init.<platform>.usb.rc
+service adbd /sbin/adbd
+    class core
+    socket adbd stream 660 system system
+    disabled
+    seclabel u:r:adbd:s0
+    ioprio rt 4  
+  ioprio be 2
+IoSchedClass, usage: ioprio <rt|be|idle> <ioprio 0-7>\n . 
+  
+service servicemanager /system/bin/servicemanager
+    class core
+    user system
+    group system
+    critical  //添加了此选项，如果servicemanager在四分钟内退出了四次，则设备会进入recovery模式
+    onrestart restart zygote  //如果servicemanager服务重启，则zygote服务也会重启
+
+  
+service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server   （后面都是所带参数app_process）
+    class main
+    socket zygote stream 660 root system
+    socket keystore stream 666
+    onrestart write /sys/power/state on  //如果zygote服务重启，则执行write命令，写state为on
+
+  
+init.hardware.rc内容 ：
+
+import /init.usb.rc
+
+on init
+    export EXTERNAL_STORAGE /mnt/sdcard    getenv("EXTERNAL_STORAGE") 获取变量值/ dalvik_system_Zygote.cpp
+    mkdir /mnt/sdcard 0000 system system   
+    symlink /mnt/sdcard /sdcard
+    
+  #通过USB接口的U盘虚拟成SD卡的操作
+  #export EXTERNAL_STORAGE /mnt/usb/sda1
+    #mkdir /mnt/usb/sda1 0000 system system
+    #symlink /mnt/usb/sda1 /sdcard
+    #symlink /mnt/usb/sda1 /mnt/sdcard
+  
+on early-init
+    mount tmpfs tmpfs /mnt/usb mode=0755,gid=1000
+
+on init
+    mkdir /var 0775 system system
+
+on fs
+  mount -o size=110m -t tmpfs tmpfs /dev/cache mode=0777,gid=1000 
+    mount ext4 /dev/block/mmcblk0p4 /system wait ro noatime block_validity nodiscard data=ordered journal_checksum 
+    mount ext4 /dev/block/mmcblk0p5 /data wait nosuid nodev noatime block_validity nodiscard data=ordered journal_checksum
+    mount ext4 /dev/block/mmcblk0p7 /tvservice wait ro noatime block_validity nodiscard data=ordered journal_checksum
+ 
+on post-fs
+    command
+    
+on post-fs-data
+    write /proc/sys/kernel/core_pattern /var/coredump.%p.gz
+
+on boot
+
+# After launcher is displayed, trigger related drivers initialization
+on property:init.svc.bootanim=stopped		// 开机后启动加载或者启动某些服务，提高开机速度
+    insmod /system/lib/modules/usb-storage.ko
+    
+# bugreport is triggered by holding down volume down, volume up and power
+service bugreport /system/bin/bugmailer.sh -v
+    class main
+    disabled
+    oneshot 
+    keycodes 114 115 116 
