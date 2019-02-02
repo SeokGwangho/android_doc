@@ -1,0 +1,159 @@
+Android Back/Home键的监听
+
+--------------------------------------------------------------
+1.Back键的监听
+--------------------------------------------------------------
+	对于Back键的监听, 比较容易, 可以在多个系统回调处拦截. 比如在activity的下列方法中, 都可以收到Back键按下的事件:
+	
+	@Override
+	public void onBackPressed() {
+	    // super.onBackPressed();		//注掉这行的话, Back键不退出activity
+	    Log.i(LOG_TAG, "onBackPressed");
+	}
+	
+	@Override
+	public boolean dispatchKeyEvent(KeyEvent event) {
+	    Log.i(LOG_TAG, "dispatchKeyEvent: keyCode: " + event.getKeyCode());
+	    return super.dispatchKeyEvent(event);
+	}
+	
+	@Override
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
+	    Log.i(LOG_TAG, "onKeyDown: keyCode: " + keyCode);
+	
+	    switch (keyCode) {
+	    	case KeyEvent.KEYCODE_MENU:
+	    	    Log.i(LOG_TAG, "KeyEvent.KEYCODE_MENU");
+	    	    break;
+	    	case KeyEvent.KEYCODE_BACK:
+	    	    Log.i(LOG_TAG, "KeyEvent.KEYCODE_BACK");
+	    	    break;
+	    	case KeyEvent.KEYCODE_HOME:
+	    	    Log.i(LOG_TAG, "KeyEvent.KEYCODE_HOME");		// 收不到
+	    	    break;
+	    	case KeyEvent.KEYCODE_APP_SWITCH:
+	    	    Log.i(LOG_TAG, "KeyEvent.KEYCODE_APP_SWITCH");	// 收不到
+	    	    break;
+	    	default:
+	    	    break;
+	    }
+	
+	    return super.onKeyDown(keyCode, event);
+	}
+
+
+
+--------------------------------------------------------------
+2.HOME键的监听(广播监听)
+--------------------------------------------------------------
+	注意: 不同的手机, 按键不同, 所以需要对不同理由做区分。
+
+	对于Home键的监听不是那么容易，因为Home键可以将程序退出放在后台。所以这个事件，是直接分发给OS，OS接收到之后做相应处理。
+	Home键的事件,不是直接传递到应用里面，所以在上述监听Back键的代码中，相应的回调中是收不到Home键的事件的。
+
+
+	对Home键的监听，主要通过注册广播接收器来实现。
+	拦截让窗口关闭的系统动作，然后根据Intent里面的具体参数，分析当前到底是Home键/应用切换键/还是其他功能按键。
+
+
+
+	------------------------------
+	广播接收器实现如下:
+	------------------------------
+	package com.mengdd.hellohome;
+
+	import android.content.BroadcastReceiver;
+	import android.content.Context;
+	import android.content.Intent;
+	import android.util.Log;
+
+	public class HomeWatcherReceiver extends BroadcastReceiver {
+	    private static final String LOG_TAG = "HomeReceiver";
+	    private static final String SYSTEM_DIALOG_REASON_KEY = "reason";
+	    private static final String SYSTEM_DIALOG_REASON_RECENT_APPS = "recentapps";
+	    private static final String SYSTEM_DIALOG_REASON_HOME_KEY = "homekey";
+	    private static final String SYSTEM_DIALOG_REASON_LOCK = "lock";
+	    private static final String SYSTEM_DIALOG_REASON_ASSIST = "assist";
+
+	    @Override
+	    public void onReceive(Context context, Intent intent) {			//静态注册，不起作用，收不到onReceive回调
+
+		String action = intent.getAction();
+		Log.i(LOG_TAG, "onReceive: action: " + action);
+
+		if (action.equals(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)) {
+
+		    // android.intent.action.CLOSE_SYSTEM_DIALOGS
+		    String reason = intent.getStringExtra(SYSTEM_DIALOG_REASON_KEY);
+		    Log.i(LOG_TAG, "reason: " + reason);
+
+		    if (SYSTEM_DIALOG_REASON_HOME_KEY.equals(reason)) {
+			Log.i(LOG_TAG, "homekey");					// 短按Home键
+
+		    } else if (SYSTEM_DIALOG_REASON_RECENT_APPS.equals(reason)) {
+			Log.i(LOG_TAG, "long press home key or activity switch");	// 长按Home键 或者 activity切换键
+
+		    } else if (SYSTEM_DIALOG_REASON_LOCK.equals(reason)) {
+			Log.i(LOG_TAG, "lock");						// 锁屏
+		    } else if (SYSTEM_DIALOG_REASON_ASSIST.equals(reason)) {
+			Log.i(LOG_TAG, "assist");					// Samsung 长按Home键
+		    }
+		}
+	    }
+	}
+
+
+------------------------------
+Home键的监听广播注册
+------------------------------
+广播接收器的注册，有两种方式：
+	一种是静态注册，即写在manifest里面声明；
+	一种是动态注册，即在Java代码里面注册；
+
+
+采用静态注册：
+	上面对Home键实现监听的那个receiver，静态注册如下:
+	    <receiver android:name="com.mengdd.hellohome.HomeWatcherReceiver" >
+		<intent-filter>
+		    <action android:name="android.intent.action.CLOSE_SYSTEM_DIALOGS" />
+		</intent-filter>
+	    </receiver>
+
+	但是发现，静态注册，不起作用，即收不到onReceive回调。
+
+ 
+
+采用动态注册：
+	private static HomeWatcherReceiver mHomeKeyReceiver = null;
+
+	private static void registerHomeKeyReceiver(Context context) {
+	    Log.i(LOG_TAG, "registerHomeKeyReceiver");
+	    mHomeKeyReceiver = new HomeWatcherReceiver();
+	    final IntentFilter homeFilter = new IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
+
+	    context.registerReceiver(mHomeKeyReceiver, homeFilter);
+	}
+
+	private static void unregisterHomeKeyReceiver(Context context) {
+	    Log.i(LOG_TAG, "unregisterHomeKeyReceiver");
+	    if (null != mHomeKeyReceiver) {
+		context.unregisterReceiver(mHomeKeyReceiver);
+	    }
+	}
+
+
+	然后，在Activity的onResume()和onPause()里面分别调用:
+
+	@Override
+	protected void onResume() {
+	    super.onResume();
+	    registerHomeKeyReceiver(this);
+	}
+
+	@Override
+	protected void onPause() {
+	    unregisterHomeKeyReceiver(this);
+	    super.onPause();
+	}
+
+	当然也可以根据需要，在其他合适的时机注册和注销。
