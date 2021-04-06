@@ -1,0 +1,7 @@
+Android's SharedPreferences are often used to store simple data. (ID, string...)
+
+SharedPreferences saves data in the form of a file and is maintained until the app is deleted.
+
+That is, when the app is deleted, the SharedPreferences that were used are also deleted.
+
+...
