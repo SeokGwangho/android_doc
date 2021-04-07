@@ -1,0 +1,22 @@
+Fix Android Studio "Recompile with -Xlint in Android studio" Warning:
+-----------------------------------------------------
+
+The message suggest you recompile with args -Xlint to get more warning details,
+add these code to build.gradle (Project: project-name) File:
+
+
+allprojects {
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
+    }
+}
+
+
+
+
+Then you can fix warnings by detailed messages.
+For example, you can replace deprecated method with new method
+(there always been a new method since old method has been deprecated).
+
+However, sometimes we don't want change our code for some reasons,
+we just want get rid of compile warning, you can add @SuppressWarnings("deprecation") in front of the deprecated method.
